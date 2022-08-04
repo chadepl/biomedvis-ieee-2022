@@ -7,37 +7,40 @@
     <title>Aug 1 - Aug 7</title>
 </head>
 <body>
-    <h1>Aug 1 - Aug 7</h1>
-    The dataset contains information about the protein structures and the post translational modifications that target certain locations of the protein. Below we present an exploratory analysis of these datasets.
+    <h1>Aug 1 - Aug 7: exploring the data</h1>
 
-    <h2>Protein structures</h2>
-    <p>
-        This dataset has the following attributes:
+    In this week, we perform an in depth exploration of the provided datasets. We start with the protein dataset and then proceed to the modifications dataset. Finally, we perform a combined exploration delving deeper into the local neighborhoods of the proteins. We structure the exploration in a Q&A format.
+
+    <h2>General details</h2>
+
+    <p>The provided data consists of protein structures and modifications for three proteins in two species (human and mouse).</p> 
+
+    <h2>Dataset 1: protein structures</h2>
+
+    <p>This dataset has the attributes listed below. In the following we explore several exploratory questions on the dataset.</p>
+
+    <ul>
+        <li>UniAcc (string): UniProt accession.</li>
+        <li>RES (string): identifier of the amino acid in the current position. There are 20 essential amino acids.</li>
+        <li>POS (int): position of current residue in the protein primary structure. Ranges from 0 to the length of the protein minus 1 (0 indexing).</li>
+        <li>quality (string): <a href="https://alphafold.ebi.ac.uk/faq#faq-5">pLLDT score</a>, which is a per-residue confidence metric of the AlphaFold prediction. Values can oscillate between 0 and 100 and can be interpreted as follows:</li>
         <ul>
-            <li>UniAcc (string): UniProt accession.</li>
-            <li>RES (string): identifier of the amino acid in the current position. There are 20 essential amino acids.</li>
-            <li>POS (int): position of current residue in the protein primary structure. Ranges from 0 to the length of the protein minus 1 (0 indexing).</li>
-            <li>quality (string): <a href="https://alphafold.ebi.ac.uk/faq#faq-5">pLLDT score</a>, which is a per-residue confidence metric of the AlphaFold prediction. Values can oscillate between 0 and 100 and can be interpreted as follows:</li>
-            <ul>
-                <li>Below 50: should not be interpreted. Confidence scores below 50 are a strong predictor of disorder.</li>
-                <li>Between 50 and 70: low-confidence predictions. Treat with caution.</li>
-                <li>Between 70 and 90: well modeled region.</li>
-                <li>Above 90: modeled to high-accuracy. Can be used in applications like characterization of binding sites which require high-accuracy.</li>
-            </ul>
-            <li>secondary_structure (string): secondary structure that characterizes the current residue. Could be a BEND (bend), a TURN (turn), different types of HELX (helix) or STRN (strand).</li>
-            <li>BEND (int): 1 if residue is a bend, 0 otherwise.</li>
-            <li>HELX (int): 1 if residue is a helix, 0 otherwise.</li>
-            <li>STRN (int): 1 if residue is a bend, 0 otherwise.</li>
-            <li>TURN (int): 1 if residue is a turn, 0 otherwise.</li>
-            <li>unstructured (int): 1 if residue is not BEND, HELX, STRN or TURN; 0 otherwise.</li>
-            <li>*_coord_c (float64): x, y, z coordinates of the carbon atom.</li>
-            <li>*_coord_ca (float64): x, y, z coordinates of the alpha carbon atom.</li>
-            <li>*_coord_cb (float64): x, y, z coordinates of the beta carbon atom.</li>
-            <li>*_coord_n (float64): x, y, z coordinates of the nitrogen atom.</li>
+            <li>Below 50: should not be interpreted. Confidence scores below 50 are a strong predictor of disorder.</li>
+            <li>Between 50 and 70: low-confidence predictions. Treat with caution.</li>
+            <li>Between 70 and 90: well modeled region.</li>
+            <li>Above 90: modeled to high-accuracy. Can be used in applications like characterization of binding sites which require high-accuracy.</li>
         </ul>
-    </p>
-
-    <p>The dataset contains data for three proteins in two species (human and mouse). Below, we present a general exploration of the data in a Q&A format, focusing on the spatial aspects of the structure.</p>
+        <li>secondary_structure (string): secondary structure that characterizes the current residue. Could be a BEND (bend), a TURN (turn), different types of HELX (helix) or STRN (strand).</li>
+        <li>BEND (int): 1 if residue is a bend, 0 otherwise.</li>
+        <li>HELX (int): 1 if residue is a helix, 0 otherwise.</li>
+        <li>STRN (int): 1 if residue is a bend, 0 otherwise.</li>
+        <li>TURN (int): 1 if residue is a turn, 0 otherwise.</li>
+        <li>unstructured (int): 1 if residue is not BEND, HELX, STRN or TURN; 0 otherwise.</li>
+        <li>*_coord_c (float64): x, y, z coordinates of the carbon atom.</li>
+        <li>*_coord_ca (float64): x, y, z coordinates of the alpha carbon atom.</li>
+        <li>*_coord_cb (float64): x, y, z coordinates of the beta carbon atom.</li>
+        <li>*_coord_n (float64): x, y, z coordinates of the nitrogen atom.</li>
+    </ul>
 
     <h3>Why are there different types of x, y, z coordinates?</h3>
 
@@ -47,24 +50,53 @@
     
     <p>The locations of different atoms can be used to compute quantities like the <a href="https://en.wikipedia.org/wiki/Dihedral_angle">dihedral angle</a>, which, among other things, could be useful for <a href="https://en.wikipedia.org/wiki/Ramachandran_plot">visualization</a>. Nevertheless, for now we will ignore the extra atomic-level information and instead will use the alpha carbon as the residues representative.</p>
 
-    <p><a href="assets/P01137-atoms-structure.html">This interactive visualization</a> permits exploring the structure of P01137 which is the human Transforming growth factor beta-1 protein. We connected residues through their alpha carbons and, for each alpha carbon, attached the other atoms.</p>
+    <p><a href="assets/P01137-atoms-structure.html">This interactive visualization</a> permits exploring the structure of P01137 which is the human Transforming growth factor beta-1 protein. We connected residues through their alpha carbons and, for each alpha carbon, attached the other atoms. At some point it could be interesting to include atomic-level information for analyzing the effect of modifications. For instance, by computing dihedral angles, some measure of energetic allowance could be computed. Perhaps, areas with higher cumulative energetic allowance are more prone to pathogenic mutations.</p>
 
     <h3>Are the structures the same across species?</h3>
 
-    <p>The table below, presents information about available proteins. For each, we computed the number of residues. It can be observed how except from the HNRNPA1 gene, the others match in length across species. </p>
+    <p>Not exactly. As the table below shows, the HNRNPA1 gene of mouse and human do not match in length.</p>
 
     <img src="assets/table_available_proteins.png" alt="">
+
+    <p>Inspecting the protein structures closer, the 3D configuration is similar but not the same, which should be considered when performing analysis across species. Perhaps, by aligning the structures their similarity would become apparent. For not, there is no clear use case for said alignment so we will skip it.</p> 
+
+    <div>
+        <img src="assets/P01137-P04202.png" alt="">
+        <img src="assets/P04075-P05064.png" alt="">
+        <img src="assets/P09651-P49312.png" alt="">
+    </div>
+
+    <h3>What does the field unstructured mean?</h3>
+
+    <p>If the residue does not belong to the BEND, HELX, STRN or TURN categories then it is classified as unstructured. Therefore, it is a expanded/one hot version of the structure_group field. The graphic below shows the structured and unstructured regions for the different proteins. Note how outer areas like those ocurring in P09651 and P49312 tend to be unstructured.</p>
+
+    <img src="assets/unstructured_regions.png" alt="">
 
     <h3>What do the proteins primary, secondary and tertiary structures look like?</h3>
 
     <h3>What is the distribution of the distances between adjacent residues?</h3>
 
+    <p>We compute two types of distances. First, those between adjacent residues. Second, those between nearest neighbors. In both cases we use alpha carbons.</p>
+    
+    <img src="" alt="">
+
+    <img src="" alt="">
+
     <h3>What is the effect of uncertainty/prediction quality on the analysis of the structure?</h3>
 
+    <p>According to AlphaFold's website, quality above 70 is acceptable and below 50 could indicate disorder. The histograms below show the distribution of quality scores among organisms (human vs mouse) and genes. In general, most predictions have a score above 70, making them suitable for analysis. Interestingly, for P09651 and P49312, the human and mouse genes for the Heterogeneous nuclear ribonucleoprotein A1, the model exhibits a larger degree of uncertainty in the predictions.</p>
 
-    <h2>Post translational modifications</h2>
+    <h2>Dataset 2: post-translational modifications</h2>
 
     <h2>Structures meet modifications</h2>
+
+    <p>Click on <a href="">this</a> link to access the interactive visualization we used for the following analysis.</p>
+
+    <h3>How are the modifications distributed in space?</h3>
+    
+    <h3>Where are the pathogenic modifications located?</h3>
+
+    <h2>Neighborhood analysis</h2>
 
     <h2>Persona development</h2>
     Having an understanding of the dataset, we can define the ideal users that will use the proposed visualization tool. This exercise makes it easier to reason about their motivations, goals and needs.
