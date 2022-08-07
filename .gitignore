@@ -1,3 +1,3 @@
-node_modules/
-!node_modules/three
+static/node_modules/
+!static/node_modules/three
 .DS_Store
