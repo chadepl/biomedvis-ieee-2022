@@ -6,49 +6,95 @@ simultaneously. To do so it combines two canvases into one component.
 - D3 canvas: 2D
 */
 
+import * as THREE from "three";
 
-function plot_3d_structure(protein_structure){
-    const viewport = document.getElementById("vis-protein-structure");
-    const width = 500;
-    const height = 500;
+function plot_3d_structure(data, canvas, width, height, inner_radius){
+
+    let structure = data["structure"];
+    let points_data = structure.map(d => {
+        return {
+            "x": d.x_coord_ca, 
+            "y": d.y_coord_ca, 
+            "z": d.z_coord_ca
+        }
+    });
+
+    console.log(points_data);
+
     const scene = new THREE.Scene();
+    scene.background = new THREE.Color("rgb(255,255,255)");
     let camera = new THREE.PerspectiveCamera(75, width/height, 0.1, 2000);
-    const renderer = new THREE.WebGLRenderer();
-    renderer.setSize(width, height);
-    viewport.appendChild(renderer.domElement);
-
-    const points = [];
-    const points_center = new THREE.Vector3(0, 0, 0);
-    const points_min_coords = new THREE.Vector3(0, 0, 0);
-    const points_max_coords = new THREE.Vector3(0, 0, 0);
-
-    protein_structure.forEach(element => {
-        points.push(new THREE.Vector3(element["x_coord_ca"], element["y_coord_ca"], element["z_coord_ca"]));
-    });
+    const renderer = new THREE.WebGLRenderer({"canvas": canvas});
+    renderer.setSize(width, height);      
     
-    points.forEach(point => {
-        points_center.add(point);
+    let points = points_data.map(d => new THREE.Vector3(d.x, d.y, d.z));
+
+    // Draw points
+    let group = new THREE.Group();
+    scene.add(group);
+
+    let particles_material = new THREE.PointsMaterial({
+        //color: new THREE.Color("rgba(255,0,0)"),
+        vertexColors: true,
+        size: 5,
+        //blending: THREE.AdditiveBlending,
+        transparent : true,
+        sizeAttenuation: false
     });
-    points_center.divideScalar(points.length);    
-    camera.position = new THREE.Vector3(0,0,0);
-    const moving_vec = camera.position;
+
+    let particles = new THREE.BufferGeometry();
+    let particles_positions = new Float32Array(points_data.length * 3);
+    let particles_colors = new Float32Array(points_data.length * 3);
+
+    for(let i = 0; i < points_data.length; i++){
+        particles_positions[(i * 3) + 0] = points_data[i].x;
+        particles_positions[(i * 3) + 1] = points_data[i].y;
+        particles_positions[(i * 3) + 2] = points_data[i].z;
+
+        particles_colors[(i * 3) + 0] = Math.random();
+        particles_colors[(i * 3) + 1] = Math.random();
+        particles_colors[(i * 3) + 2] = Math.random();
+    }
+    console.log(new THREE.Color("rgb(134,56,45)"));
+
+    particles.setDrawRange(0, points_data.length);
+    particles.setAttribute("position", new THREE.Float32BufferAttribute(particles_positions, 3).setUsage(THREE.DynamicDrawUsage));
+    particles.setAttribute("color", new THREE.Float32BufferAttribute(particles_colors, 3));
+
+    let point_cloud = new THREE.Points(particles, particles_material);
+    group.add(point_cloud);
+
+    // Draw lines
+    let edges_geometry = new THREE.BufferGeometry();
+    edges_geometry.setAttribute("position", new THREE.Float32BufferAttribute(particles_positions, 3));
+
+    let edges_material = new THREE.LineBasicMaterial();
+    edges_material.color = new THREE.Color("rgba(0,0,0,1)");
+
+    let edges_mesh = new THREE.Line(edges_geometry, edges_material);
+    group.add(edges_mesh);
+
+    // Setup scene
+    // - Where to look at
+    let mean = [
+        points_data.map(d => d.x).reduce((pe, ce) => pe + ce, 0)/points_data.length,
+        points_data.map(d => d.y).reduce((pe, ce) => pe + ce, 0)/points_data.length,
+        points_data.map(d => d.z).reduce((pe, ce) => pe + ce, 0)/points_data.length
+    ];
+    let points_center = new THREE.Vector3(mean[0], mean[1], mean[2]);
+
+    camera.position.set(0,0,0);    
+    const moving_vec = new THREE.Vector3(0, 0, 0);
     moving_vec.sub(points_center).multiplyScalar(10);
-    camera.position.add(moving_vec);
-    console.log(camera.position);
+    camera.position.add(moving_vec);    
     camera.lookAt(points_center);
 
+    console.log(camera.position);
+    console.log(points_center);
+    console.log(moving_vec);
 
-    const points_geom =  new THREE.BufferGeometry().setFromPoints(points);
-    const points_material = new THREE.LineBasicMaterial();
-    const points_mesh = new THREE.Line(points_geom, points_material);
-    scene.add(points_mesh);
-
-    camera.position.z = 5;
+    //camera.position.z = 5;  
     renderer.render(scene, camera);
-}
-
-function plot_3d_structure(){
-
 }
 
 function get_unique(iterable){
@@ -141,147 +187,121 @@ function plot_2d_structure_svg(data, svg, width, height, inner_radius){
                 .attr("stroke", "red")
                 .attr("fill", "none");
 
-    }     
+    }            
 
-    // Residues squares
-    let res_squares = svg.append("g").attr("id", "res_squares");
+    function get_css_color(rgba_array){
+        if(rgba_array.length == 3){
+            return "rgba("+rgba_array[0]+","+rgba_array[1]+","+rgba_array[2]+", 1)"
+        }else if(rgba_array.length == 4){
+            return "rgba("+rgba_array[0]+","+rgba_array[1]+","+rgba_array[2]+", "+rgba_array[3]+")"
+        }        
+    }
 
-    structure.map(d => {
-        const sq_color = scale_squares_color(d[feat_color]);
-        const angle_rad = scale_res_orbit(d.POS);
-        const angle_deg = -angle_rad * (180/Math.PI);
-        const x = radius_res_orbit * Math.sin(angle_rad);
-        const y = radius_res_orbit * Math.cos(angle_rad);
-        let square = res_squares
+    // Squares data
+    let squares_data = structure.map(d => {
+        let angle_rad = scale_res_orbit(d.POS);
+        return {
+            "acc": d.UniAcc, // indexing info
+            "pos": d.POS, // indexing info
+            "feat_color": d[feat_color],
+            "color": scale_squares_color(d[feat_color]),
+            "angle_rad": angle_rad,
+            "angle_deg": -angle_rad * (180/Math.PI),
+            "x": radius_res_orbit * Math.sin(angle_rad),
+            "y": radius_res_orbit * Math.cos(angle_rad),            
+            "colored": true, // all squares start colored
+            "highlighted": false,  // no square starts selected
+            "bar_height": scale_bars_height(d[feat_height])
+        };
+    })
+
+    // Residues squares 
+    let res_squares_group = svg.append("g").attr("id", "res_squares");
+
+    let res_squares = res_squares_group.selectAll("rect")
+        .data(squares_data, d => d.acc+"-"+d.pos)
+        .enter()
             .append("rect")
-                .attr("id", "res_square_"+d.UniAcc+"_"+d.POS+"")
-                .attr("x",x+(width/2))
-                .attr("y",y+(height/2))
-                .attr("width",square_size)
-                .attr("height",square_size)
-                .attr("fill", "rgb("+sq_color[0]+","+sq_color[1]+","+sq_color[2]+")")
-                .attr("transform", "rotate("+angle_deg+" "+(x+width/2)+" "+(y+height/2)+")");
-
-        let prev_feat_color_el = null;
-
-        square.on("click", function(d, i){
-            let square_id = d3.select(this).attr("id");
-            let acc = square_id.split("_")[2];
-            let pos = square_id.split("_")[3];
-            let res_el = structure.filter(d => (d.UniAcc == acc) & (d.POS == pos))[0];
-            let feat_color_el = res_el[feat_color];            
-
-            let squares = document.querySelectorAll("#res_squares rect");
-            squares.forEach(sq => {
-                let square = d3.select(sq);
-                let square_id = square.attr("id");
-                let acc = square_id.split("_")[2];
-                let pos = square_id.split("_")[3];
-                let res_el = structure.filter(d => (d.UniAcc == acc) & (d.POS == pos))[0];
-                
-                const sq_color = scale_squares_color(res_el[feat_color]);
-                square.attr("fill", "rgb("+sq_color[0]+","+sq_color[1]+","+sq_color[2]+")");
-
-                if(prev_feat_color_el == null || prev_feat_color_el != feat_color_el){
-                    if(res_el[feat_color] != feat_color_el){
-                        console.log(square);
-                        square.attr("fill", "gray");
-                    } 
-                }
-                                    
-            }); 
-
-            prev_feat_color_el = feat_color_el;
-            
-            console.log(res_el);            
-            d3.select("#tooltip #res").text(""+res_el.RES_name+" ("+res_el.RES+")");
-            d3.select("#tooltip #mods").text(res_el.num_mods_total);
-            d3.select("#tooltip #path").text(res_el.num_mods_pathogenic);
-           
-        });
-
-        square.on("mouseover", function(d, i){
-            console.log("Mouse over");
-            let square_id = d3.select(this).attr("id");
-            let acc = square_id.split("_")[2];
-            let pos = square_id.split("_")[3];
-            let res_el = structure.filter(d => (d.UniAcc == acc) & (d.POS == pos))[0];
-
-            d3.select(this)
-                .attr("x", d3.select(this).attr("x") - 5)
-                .attr("y", d3.select(this).attr("y") - 5)
-                .attr("height", square_size + 10)
-                .attr("width", square_size + 10);
-
-            // Toggle Sankey diagram
-        });
-
-        square.on("mouseout", function(d, i){
-            console.log("Mouse out");
-            let square_id = d3.select(this).attr("id");
-            let acc = square_id.split("_")[2];
-            let pos = square_id.split("_")[3];
-            let res_el = structure.filter(d => (d.UniAcc == acc) & (d.POS == pos))[0];
-        
-            const angle_rad = scale_res_orbit(res_el.POS);  
-            const angle_deg = -angle_rad * (180/Math.PI);          
-            const x = radius_res_orbit * Math.sin(angle_rad);
-            const y = radius_res_orbit * Math.cos(angle_rad);
-
-            d3.select(this)
-                .attr("height", square_size)
+                .attr("x", d => d.x + (width/2))
+                .attr("y", d => d.y + (height/2))
                 .attr("width", square_size)
-                .attr("x", x +  (width/2))
-                .attr("y", y + (height/2))
-                .attr("transform", "rotate("+angle_deg+" "+(x+width/2)+" "+(y+height/2)+")");
+                .attr("height", square_size)
+                .attr("fill", d => d.colored ? get_css_color(d.color) : "gray")
+                .attr("stroke", d => d.highlighted ? "rgba(0, 155, 155, 1)" : "none")
+                .attr("transform", d => "rotate("+d.angle_deg+" "+(d.x+(width/2))+" "+(d.y+(height/2))+")"); 
 
-            // Toggle Sankey diagram
-        });
-    });
 
     // Residues bars
-    structure.map(d => {
-        const bar_height = scale_bars_height(d.num_mods_total);
-        const angle_rad = scale_res_orbit(d.POS);
-        const angle_deg = -angle_rad * (180/Math.PI);
-        const x = radius_res_orbit * Math.sin(angle_rad);
-        const y = radius_res_orbit * Math.cos(angle_rad);
+    let res_bars_group = svg.append("g").attr("id", "res_bars");
 
-        let res_bars = svg.append("g").attr("id", "res_bars");
-        
-        res_bars.append("rect")
-        .attr("x",x+(width/2))
-        .attr("y",y+(width/2)+square_size)
-        .attr("width",square_size)
-        .attr("height",bar_height)
-        .attr("fill", "gray")
-        .attr("transform", "rotate("+angle_deg+" "+(x+width/2)+" "+(y+height/2)+")");   
+    let res_bars = res_bars_group.selectAll("rect")
+        .data(squares_data, d => d.acc+"-"+d.pos)
+        .enter()
+            .append("rect")
+                .attr("x", d => d.x + (width/2))
+                .attr("y", d => d.y + (height/2) + square_size)
+                .attr("width", square_size)
+                .attr("height", d => d.bar_height)
+                .attr("fill", d => d.colored ? "gray" : "lightgray")
+                .attr("transform", d => "rotate("+d.angle_deg+" "+(d.x+(width/2))+" "+(d.y+(height/2))+")");
+
+    // Chords data
+    let nn_data = nearest_neighbors.map(d => {
+        let el_x = squares_data.filter(e => {return e.acc == d.UniAcc & e.pos == d.POS_x})[0];
+        let el_y = squares_data.filter(e => {return e.UniAcc == d.acc & e.pos == d.POS_y})[0];
+
+        return {
+            "acc": d.UniAcc, // for indexing
+            "pos_x": d.POS_x, // for indexing
+            "pos_y": d.POS_y, // for indexing
+            "x_x": el_x.x,
+            "y_x": el_x.y,
+            "x_y": el_y.x,
+            "y_y": el_y.y,
+        };
     });
 
-    // Chord diagram
-    console.log(nearest_neighbors);
-    let nn_chords = svg.append("g").attr("id", "nn_chords")
-    nearest_neighbors.forEach(d => {
-        let el_x = structure.filter(e => {return e.UniAcc == d.UniAcc & e.POS == d.POS_x})[0];
-        //console.log(el_x);
-        const angle_rad_x = scale_res_orbit(el_x.POS);
-        const x_x = radius_res_orbit * Math.sin(angle_rad_x) + width/2;
-        const y_x = radius_res_orbit * Math.cos(angle_rad_x) + height/2;
+    // Residues neighbor chords
+    let res_chords_group = svg.append("g").attr("id", "res_chords");
 
-        let el_y = structure.filter(e => {return e.UniAcc == d.UniAcc & e.POS == d.POS_y})[0];
-        //console.log(el_y);
-        const angle_rad_y = scale_res_orbit(el_y.POS);
-        const x_y = radius_res_orbit * Math.sin(angle_rad_y) + width/2;
-        const y_y = radius_res_orbit * Math.cos(angle_rad_y) + height/2;
-
-        nn_chords
+    let res_chords = res_chords_group.selectAll("line").data(nn_data, d => d.acc+"-"+d.pos_x+"-"+d.pos_y)
+        .enter()
             .append("line")
-                .attr("x1", x_x)
-                .attr("y1", y_x)
-                .attr("x2", x_y)
-                .attr("y2", y_y)
-                .attr("stroke", "rgba(100,100,100,0.1)");
-    });
+                .attr("x1", d => d.x_x + (width/2))
+                .attr("y1", d => d.y_x + (height/2))
+                .attr("x2", d => d.x_y + (width/2))
+                .attr("y2", d => d.y_y + (height/2))
+                .attr("stroke", "rgba(100,100,100,0.01)");
+
+    function get_res_info(acc, pos){
+        return structure.filter(d => d.UniAcc == acc && d.POS == pos)[0];
+    }
+
+    let selected_elements = [];
+    
+    function onclick_res_squares(event, datum){
+        /*
+        Clicking an element "selects" it.
+        Meaning that it gets added to a list of selected 
+        elements for neighbor analysis.
+         */
+        node = d3.select(this);
+        console.log(event);
+        console.log(datum);
+        console.log(node);        
+    }
+
+    function onmouseenter_res_squares(event, datum){
+        // Toggles information of the res at (acc, pos)
+    }
+
+    function onmouseout_res_squares(event, datum){
+        // Toggles information of the res at (acc, pos)
+    }
+
+    res_squares.on("click", onclick_res_squares);
+    res_squares.on("mouseenter", onmouseenter_res_squares);
+    res_squares.on("mouseout", onmouseout_res_squares);
 }
 
 function plot_2d_structure(data, ctx, width, height, inner_radius, interaction_data){
@@ -418,9 +438,9 @@ function plot_2d_structure(data, ctx, width, height, inner_radius, interaction_d
 function structure_visualization(structure, modifications, nearest_neighbors){
     const width = 800;
     const height = 800;
-    const inner_radius = parseInt((width/2)*0.8);
+    const inner_radius = parseInt((width/2)*0.9);
     
-    data = {
+    let data = {
         "structure": structure,
         "modifications": modifications,
         "nearest_neighbors": nearest_neighbors
@@ -435,11 +455,11 @@ function structure_visualization(structure, modifications, nearest_neighbors){
         .attr("height", height)
         .attr("style", "position: absolute; left: 0; top: 0; z-index: 0;");
 
-    str_vis_div.append("canvas")
-        .attr("id", "layer_2d_canvas")
-        .attr("width", width)
-        .attr("height", height)
-        .attr("style", "position: absolute; left: 0; top: 0; z-index: 1;");
+    // str_vis_div.append("canvas")
+    //     .attr("id", "layer_2d_canvas")
+    //     .attr("width", width)
+    //     .attr("height", height)
+    //     .attr("style", "position: absolute; left: 0; top: 0; z-index: 1;");
 
     str_vis_div.append("svg")
         .attr("id", "layer_2d_svg")
@@ -448,23 +468,14 @@ function structure_visualization(structure, modifications, nearest_neighbors){
         .attr("style", "position: absolute; left: 0; top: 0; z-index: 1;");
 
 
-    const canvas_2d = document.getElementById("layer_2d_canvas");
+    // const canvas_2d = document.getElementById("layer_2d_canvas");
     const canvas_3d = document.getElementById("layer_3d_canvas");
-    const ctx_2d = canvas_2d.getContext("2d");
-    const ctx_3d = canvas_3d.getContext("2d");
+    // const ctx_2d = canvas_2d.getContext("2d");
+    // const ctx_3d = canvas_3d.getContext("2d");
 
-
+    plot_3d_structure(data, canvas_3d, width, height, inner_radius);
     //plot_2d_structure(data, layer_2d_canvas.getContext("2d"), width, height, inner_radius, {});
     plot_2d_structure_svg(data, d3.select("#layer_2d_svg"), width, height, inner_radius);
-
-    // d3.select("#layer_2d_svg").on("click", function(event){
-    //     const interaction_data = {
-    //         "mouseX": event.layerX || event.offsetX,
-    //         "mouseY": event.layerY || event.offsetY 
-    //     }
-    //     plot_2d_structure_svg(data, d3.select("#layer_2d_svg"), width, height, inner_radius, interaction_data);
-    //     //console.log(mouseX, mouseY);
-    // });
 }
 
 const promises = [
