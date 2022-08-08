@@ -7,8 +7,9 @@ simultaneously. To do so it combines two canvases into one component.
 */
 
 import * as THREE from "three";
+import {OrbitControls} from "../../../node_modules/three/examples/jsm/controls/OrbitControls.js"
 
-function plot_3d_structure(data, canvas, width, height, inner_radius){
+function plot_3d_structure(data, canvas, controls_element, width, height, inner_radius){
 
     let structure = data["structure"];
     let points_data = structure.map(d => {
@@ -93,8 +94,16 @@ function plot_3d_structure(data, canvas, width, height, inner_radius){
     console.log(points_center);
     console.log(moving_vec);
 
-    //camera.position.z = 5;  
-    renderer.render(scene, camera);
+    const controls = new OrbitControls(camera, controls_element);    
+
+    //camera.position.z = 5; 
+    function animate(){
+        requestAnimationFrame(animate);
+        controls.update();
+        renderer.render(scene, camera);
+    }    
+    animate(); 
+    return controls;
 }
 
 function get_unique(iterable){
@@ -112,14 +121,13 @@ function get_colors(steps){
     return out;
 }
 
-function plot_2d_structure_svg(data, svg, width, height, inner_radius){
+function plot_2d_structure_svg(data, svg_node, width, height, radius_res_orbit, radius_max){
+
+    let svg = d3.select(svg_node);
 
     // Data related stuff
     let structure = data["structure"];
-    let nearest_neighbors = data["nearest_neighbors"];
-    
-    //structure = structure.filter(d => d.POS < 100);
-    //nearest_neighbors = nearest_neighbors.filter(d => d.POS_x < 100 && d.POS_y < 100);
+    let nearest_neighbors = data["nearest_neighbors"];    
     
     let feat_color = "RES"; 
     let feat_height = "num_mods_total";
@@ -130,7 +138,6 @@ function plot_2d_structure_svg(data, svg, width, height, inner_radius){
     // Blueprint (scales and limits)
     const scale_res_orbit = d3.scaleBand().domain(structure.map(d => d.POS)).range([0, (19/10)*Math.PI]);
     scale_res_orbit.paddingInner(0.2);
-    const radius_res_orbit = inner_radius + 10        
 
     const scale_squares_color = d3.scaleOrdinal().domain(unique_values_color).range(get_colors(unique_values_color));
 
@@ -140,54 +147,10 @@ function plot_2d_structure_svg(data, svg, width, height, inner_radius){
     const y1 = radius_res_orbit * Math.cos(scale_res_orbit.bandwidth());
 
     const square_size = ((x1-x0)**2 + (y1-y0)**2)**0.5;
-    
-    const radius_max = height/2;
+        
     const radius_start_bars = radius_res_orbit + square_size;
 
-    const scale_bars_height = d3.scaleLinear().domain(d3.extent(structure, d => d[feat_height])).range([0, radius_max - radius_start_bars]);
-
-    // Drawing marks
-    if(true){
-
-        let canvas = svg.append("g");
-        
-        // Circle where 3d structure will be positioned
-        canvas
-            .append("circle")
-                .attr("cx", width/2)
-                .attr("cy", height/2)
-                .attr("r", inner_radius)
-                .attr("stroke", "red")
-                .attr("fill", "none");
-
-        // Circle where residues start
-        canvas
-            .append("circle")
-                .attr("cx", width/2)
-                .attr("cy", height/2)
-                .attr("r", radius_res_orbit)
-                .attr("stroke", "red")
-                .attr("fill", "none");
-
-        // Circle where bars start       
-        canvas
-            .append("circle")
-                .attr("cx", width/2)
-                .attr("cy", height/2)
-                .attr("r", radius_res_orbit + square_size)
-                .attr("stroke", "red")
-                .attr("fill", "none");
-
-        // Circle where highest bar should end (max radius)
-        canvas
-            .append("circle")
-                .attr("cx", width/2)
-                .attr("cy", height/2)
-                .attr("r", radius_max)
-                .attr("stroke", "red")
-                .attr("fill", "none");
-
-    }            
+    const scale_bars_height = d3.scaleLinear().domain(d3.extent(structure, d => d[feat_height])).range([0, radius_max - radius_start_bars]);          
 
     function get_css_color(rgba_array){
         if(rgba_array.length == 3){
@@ -271,7 +234,7 @@ function plot_2d_structure_svg(data, svg, width, height, inner_radius){
                 .attr("y1", d => d.y_x + (height/2))
                 .attr("x2", d => d.x_y + (width/2))
                 .attr("y2", d => d.y_y + (height/2))
-                .attr("stroke", "rgba(100,100,100,0.01)");
+                .attr("stroke", "rgba(100,100,100,0.1)");
 
     function get_res_info(acc, pos){
         return structure.filter(d => d.UniAcc == acc && d.POS == pos)[0];
@@ -285,7 +248,7 @@ function plot_2d_structure_svg(data, svg, width, height, inner_radius){
         Meaning that it gets added to a list of selected 
         elements for neighbor analysis.
          */
-        node = d3.select(this);
+        let node = d3.select(this);
         console.log(event);
         console.log(datum);
         console.log(node);        
@@ -304,149 +267,40 @@ function plot_2d_structure_svg(data, svg, width, height, inner_radius){
     res_squares.on("mouseout", onmouseout_res_squares);
 }
 
-function plot_2d_structure(data, ctx, width, height, inner_radius, interaction_data){
-
-    console.log(data);
-    let structure = data["structure"];
-    structure = structure.filter(d => d.POS < 100);
-
-    // INTERACTION DATA
-    // https://medium.com/free-code-camp/d3-and-canvas-in-3-steps-8505c8b27444
-    if("mouseX" in interaction_data & "mouseY" in interaction_data){
-        console.log(interaction_data);
-        // Find the object with the given coordinates, if there is one and update the chart accordingly
-        d3.select("#tooltip").text("("+interaction_data.mouseX+", "+interaction_data.mouseY+")");
-        // Determine if element was clicked 
-        // If not, everything as usual
-        // If yes, highlight elements that share color variable
-    }    
-    
-    let height_var = "num_mods_total";
-    let color_var = "RES";
-
-    const radius_res_circle = inner_radius + 10        
-    const radius_max = height/2;
-
-    // Outer circle of residues
-    // POS -> angle -> x, y    
-    const scale_circle = d3.scaleBand().domain(structure.map(d => d.POS)).range([0, (19/10)*Math.PI]);
-    scale_circle.paddingInner(0.2);
-
-    const unique_values_to_color = get_unique(structure.map(d => d.RES));
-    const scale_squares_color = d3.scaleOrdinal().domain(unique_values_to_color).range(get_colors(unique_values_to_color));
-
-    const x0 = radius_res_circle * Math.sin(0);
-    const y0 = radius_res_circle * Math.cos(0);
-    const x1 = radius_res_circle * Math.sin(scale_circle.bandwidth());
-    const y1 = radius_res_circle * Math.cos(scale_circle.bandwidth());
-    const square_size = ((x1-x0)**2 + (y1-y0)**2)**0.5;
-    const radius_start_bars = radius_res_circle + square_size;
-
-    const scale_bars_height = d3.scaleLinear().domain(d3.extent(structure, d => d[height_var])).range([0, radius_max - radius_start_bars]);
-
-    ctx.clearRect(0, 0, width, height);
-
-    // Drawing marks
-    if(false){
-        // Circle where 3d structure will be positioned
-        ctx.beginPath();
-        ctx.strokeStyle = "red";
-        ctx.arc(width/2, height/2, inner_radius, 0, 2 * Math.PI);
-        ctx.stroke();
-
-        // Circle where residues start
-        ctx.beginPath();
-        ctx.strokeStyle = "red";
-        ctx.arc(width/2, height/2, radius_res_circle, 0, 2 * Math.PI);
-        ctx.stroke();
-
-        // Circle where bars start
-        ctx.beginPath();
-        ctx.strokeStyle = "red";
-        ctx.arc(width/2, height/2, radius_res_circle + square_size, 0, 2 * Math.PI);
-        ctx.stroke();
-
-        // Circle where highest bar should end (max radius)
-        ctx.beginPath();
-        ctx.strokeStyle = "red";
-        ctx.arc(width/2, height/2, radius_max, 0, 2 * Math.PI);
-        ctx.stroke();
-    }  
-
-    // Residues connecting path
-    // This is the linear representation
-    // Therefore, when squares are too small they fade and only this one remains
-    ctx.strokeStyle = "gray";
-    ctx.translate(width/2, height/2);
-    ctx.beginPath();        
-    structure.map(d => {
-        const angle_rad = scale_circle(d.POS);
-        const x = (radius_res_circle + square_size/2) * Math.sin(angle_rad);
-        const y = (radius_res_circle + square_size/2) * Math.cos(angle_rad);
-        ctx.lineTo(x,y);
-    });
-    ctx.lineWidth = 3;
-    ctx.stroke();
-    ctx.lineWidth = 1;
-    ctx.setTransform(1,0,0,1,0,0);
-    
-    // Residues squares
-    ctx.strokeStyle = "black";
-    ctx.translate(width/2, height/2);
-    structure.map(d => {
-        const sq_color = scale_squares_color(d[color_var]);
-        const angle_rad = scale_circle(d.POS);
-        const x = radius_res_circle * Math.sin(angle_rad);
-        const y = radius_res_circle * Math.cos(angle_rad);
-        //ctx.translate(-(x-width/2), -(y-height/2));
-        ctx.translate(x, y);
-        ctx.rotate(-angle_rad);
-        ctx.translate(-square_size/2, 0);
-
-        ctx.fillStyle = "rgb("+sq_color[0]+","+sq_color[1]+","+sq_color[2]+")"; 
-        ctx.fillRect(0,0,square_size,square_size);
-        //ctx.strokeRect(0,0,square_size,square_size);
-
-        ctx.translate(+square_size/2, 0);
-        ctx.rotate(angle_rad);  
-        ctx.translate(-x,-y);
-    });
-    ctx.setTransform(1,0,0,1,0,0);
-
-    // Bars 
-    ctx.fillStyle = "lightgray";
-    ctx.translate(width/2, height/2);
-    structure.map(d => {
-        const bar_height = scale_bars_height(d.num_mods_total);
-        const angle_rad = scale_circle(d.POS);
-        const x = radius_res_circle * Math.sin(angle_rad);
-        const y = radius_res_circle * Math.cos(angle_rad);
-        ctx.translate(x, y);
-        ctx.rotate(-angle_rad);
-        ctx.translate(-square_size/2, square_size);
-
-        ctx.fillRect(0,0,square_size,bar_height);
-
-        ctx.translate(+square_size/2, -square_size);
-        ctx.rotate(angle_rad);  
-        ctx.translate(-x,-y);        
-    });
-    ctx.setTransform(1,0,0,1,0,0);
-
-}
-
 function structure_visualization(structure, modifications, nearest_neighbors){
+    /*
+    Plots the analysis widget for one structure.
+    The center is a 3D view of the protein.
+    The outer circle corresponds to a 2D view of the protein's
+    primary structure, which makes selection and neighborhood 
+    analysis easier.
+     */
+
+    // The data that this visualization uses
+    let data = {
+        structure: structure,
+        modifications: modifications,
+        nearest_neighbors: nearest_neighbors
+    }
+
+    // - Filtering the data (for debugging purposes)
+    // let num_res = 100;
+    // data.structure = data.structure.filter(d => d.POS < num_res);
+    // data.modifications = data.modifications.filter(d => d.POS < num_res);
+    // data.nearest_neighbors = data.nearest_neighbors.filter(d => d.POS_x < 100 && d.POS_y < num_res);
+
+    // General widget settings
     const width = 800;
     const height = 800;
     const inner_radius = parseInt((width/2)*0.9);
-    
-    let data = {
-        "structure": structure,
-        "modifications": modifications,
-        "nearest_neighbors": nearest_neighbors
-    }
+    const radius_res_orbit = inner_radius + 10;
+    const radius_max = height/2;
 
-    const str_vis_div =d3.select("#structure_visualization_widget");
+    // Scales
+    let feat_color = "RES";
+
+    // Setting up visualization environment
+    const str_vis_div = d3.select("#structure_visualization_widget");
     str_vis_div.attr("style", "position: relative;");
 
     str_vis_div.append("canvas")
@@ -455,27 +309,57 @@ function structure_visualization(structure, modifications, nearest_neighbors){
         .attr("height", height)
         .attr("style", "position: absolute; left: 0; top: 0; z-index: 0;");
 
-    // str_vis_div.append("canvas")
-    //     .attr("id", "layer_2d_canvas")
-    //     .attr("width", width)
-    //     .attr("height", height)
-    //     .attr("style", "position: absolute; left: 0; top: 0; z-index: 1;");
-
     str_vis_div.append("svg")
         .attr("id", "layer_2d_svg")
         .attr("width", width)
         .attr("height", height)
         .attr("style", "position: absolute; left: 0; top: 0; z-index: 1;");
 
-
-    // const canvas_2d = document.getElementById("layer_2d_canvas");
+    const svg_2d = document.getElementById("layer_2d_svg");
     const canvas_3d = document.getElementById("layer_3d_canvas");
-    // const ctx_2d = canvas_2d.getContext("2d");
-    // const ctx_3d = canvas_3d.getContext("2d");
 
-    plot_3d_structure(data, canvas_3d, width, height, inner_radius);
-    //plot_2d_structure(data, layer_2d_canvas.getContext("2d"), width, height, inner_radius, {});
-    plot_2d_structure_svg(data, d3.select("#layer_2d_svg"), width, height, inner_radius);
+
+    // Grid lines (for debugging purposes)
+
+    if(false){
+
+        let drawing_marks = d3.select("#layer_2d_svg").append("g");
+        
+        // Circle where 3d structure will be positioned
+        drawing_marks
+            .append("circle")
+                .attr("cx", width/2)
+                .attr("cy", height/2)
+                .attr("r", inner_radius)
+                .attr("stroke", "red")
+                .attr("fill", "none");
+
+        // Circle where residues start
+        drawing_marks
+            .append("circle")
+                .attr("cx", width/2)
+                .attr("cy", height/2)
+                .attr("r", radius_res_orbit)
+                .attr("stroke", "red")
+                .attr("fill", "none");
+
+        // Circle where highest bar should end (max radius)
+        drawing_marks
+            .append("circle")
+                .attr("cx", width/2)
+                .attr("cy", height/2)
+                .attr("r", radius_max)
+                .attr("stroke", "red")
+                .attr("fill", "none");
+
+    }  
+
+
+    // Plotting the widget components
+
+    let controls = plot_3d_structure(data, canvas_3d, svg_2d, width, height, inner_radius);
+    plot_2d_structure_svg(data, svg_2d, width, height, radius_res_orbit, radius_max);   
+    controls.enabled = true; 
 }
 
 const promises = [
@@ -491,7 +375,7 @@ Promise.all(promises)
 .then(data => {
     //plot_dashboard(data[0], data[1])
     console.log(get_unique(data[0].map(d => d.UniAcc)));
-    const acc = "P04202"; // simulates the selection of a protein structure to visualize
+    const acc = ["P01137", "P04202", "P09651"][2]; // simulates the selection of a protein structure to visualize
     structure_visualization(
         data[0].filter(d => d.UniAcc == acc), 
         data[1].filter(d => d.UniAcc == acc), 
