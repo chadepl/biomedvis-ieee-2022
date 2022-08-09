@@ -11,7 +11,77 @@ function genColor(){
     return col;
 }
 
-function plot_2d_heatmap_canvas(data, selected_nodes, nn_extent, canvas, interaction_canvas, width, height){
+function plot_nns_graph(data, selected_nns, svg_node){
+    /**
+     * Plots selected neighborhoods in a 2D canvas
+     * using a force-directed layout. This is the first 
+     * step for comparing multiple neighborhoods deemed 
+     * interesting in the heatmap.
+     * The graph has two types of edges. 
+     * Type 1: within neighborhood edges.
+     * Type 2: between neighborhood edges. 
+     */
+
+    console.log(data);
+    console.log(selected_nns);
+
+    let nodes_map = data.nodes_map;
+    let nn_map = data.nn_map;
+
+    let svg = d3.select(svg_node);
+    let width = svg.attr("width");
+    let height = svg.attr("height");
+    
+    svg.attr("viewBox", [-width / 2, -height / 2, width, height]);
+
+    let links = [{source: 0, target: 1, value: 10}];
+
+    let nodes = selected_nns.map(d => {
+        if(nodes_map.has(d)){
+            return {pos: d, res: nodes_map.get(d).res};
+        }
+    });
+
+    console.log(nodes);
+
+    let force_node = d3.forceManyBody();
+    let force_link = d3.forceLink(links);
+
+    let simulation = d3.forceSimulation(nodes)
+        .force("link", force_link)
+        .force("charge", force_node)
+        .force("center", d3.forceCenter())
+        .on("tick", ticked);
+
+    let link = svg.append("g")
+        .attr("stroke", "white")
+        .selectAll("line")
+        .data(links)
+        .join("line");
+
+    let node = svg.append("g")
+        .attr("fill", "red")
+        .attr("stroke", "white")
+        .selectAll("circle")
+        .data(nodes)
+        .join("circle")
+            .attr("r", 10);
+
+    function ticked() {
+        link
+            .attr("x1", d => d.source.x)
+            .attr("y1", d => d.source.y)
+            .attr("x2", d => d.target.x)
+            .attr("y2", d => d.target.y);
+    
+        node
+            .attr("cx", d => d.x)
+            .attr("cy", d => d.y);
+        }
+
+}
+
+function plot_nns_heatmap(data, selected_nodes, canvas, width, height){
     /**
      * This function plots a heatmap for comparing neighborhoods
      * Spatial neighborhoods are defined by two parameters:
@@ -23,39 +93,43 @@ function plot_2d_heatmap_canvas(data, selected_nodes, nn_extent, canvas, interac
      *   are assumed to be centers
      * If an extent is not provided, neightborhoods are only assumed
      * to contain the selected node.
-     */
-    console.log(data);     
+     */   
 
     let nodes_map = data.nodes_map;
+    let nn_map = data.nn_map;
+
+    let nn_data = [];
+    for(let i = 0; i < selected_nodes.length; i++){
+        for(let j = 0; j < selected_nodes.length; j++){
+            if(i >= j){
+                let s = nodes_map.get(selected_nodes[i]);
+                let t = nodes_map.get(selected_nodes[j]);
+                let s_nns = nn_map.get(selected_nodes[i]);
+                let t_nns = nn_map.get(selected_nodes[j]);                
+                let cell_data = {
+                    pos_x: selected_nodes[i], // source neighborhood
+                    pos_y: selected_nodes[j], // target neighborhood                    
+                    // this is the place to compute neighborhood distance functions
+                    dist_euc_centers: Math.sqrt((s.x - t.x)**2 + (s.y - t.y)**2 + (s.z - t.z)**2),
+                    intersect_over_union_res: get_intersect_over_union("res", nodes_map, s_nns, t_nns)
+                };                
+                nn_data.push(cell_data);
+            }            
+        }
+    } 
 
     // Visualization parameters and data    
 
-    let nn_map = new Map();
-    data.nearest_neighbors.forEach(d => {
-        if(selected_nodes.includes(d.POS_x)){
-            if(nn_map.has(d.POS_x)){
-                let arr = nn_map.get(d.POS_x);
-                if(nn_extent.type === "ball_radius"){
-                    if(d.distance_ca <= nn_extent.value){
-                        arr.push({target: d.POS_y, edge_w: d.distance_ca})
-                    }
-                }else if(nn_extent.type == "num_nns"){
-                    if(arr.length - 1 < nn_extent.value){
-                        arr.push({target: d.POS_y, edge_w: d.distance_ca})
-                    }
-                }                                
-                nn_map.set(d.POS_x, arr); // maybe costly to repeat it when its not needed
-            }else{
-                nn_map.set(d.POS_x, [{target: d.POS_y, edge_w: d.distance_ca}]);
-            }
-        }
-    });
-
-    console.log(nodes_map);
-    console.log(nn_map);    
-
-    // Interaction helpers
+    // Interaction
     let interaction_map = new Map();
+
+    let interaction_canvas = d3.select(canvas)
+        .append("canvas")
+            .attr("id", "widget_nns_heatmap_interactivity")
+            .attr("width", width)
+            .attr("height", height)
+            //.attr("style", "position: absolute; left: 0; top: 0; z-index: 1;");
+            .attr("style", "display: none; position: absolute; left: 0; top: 0; z-index: 0;").node();
 
     // Heatmap data
     let ctx = canvas.getContext("2d");
@@ -94,31 +168,8 @@ function plot_2d_heatmap_canvas(data, selected_nodes, nn_extent, canvas, interac
         return size_intersect/all_vals.size;
     }
 
-    let nn_data = [];
-    for(let i = 0; i < selected_nodes.length; i++){
-        for(let j = 0; j < selected_nodes.length; j++){
-            if(i >= j){
-                let s = nodes_map.get(selected_nodes[i]);
-                let t = nodes_map.get(selected_nodes[j]);
-                let s_nns = nn_map.get(selected_nodes[i]);
-                let t_nns = nn_map.get(selected_nodes[j]);                
-                let cell_data = {
-                    pos_x: selected_nodes[i], // source neighborhood
-                    pos_y: selected_nodes[j], // target neighborhood                    
-                    // this is the place to compute neighborhood distance functions
-                    dist_euc_centers: Math.sqrt((s.x - t.x)**2 + (s.y - t.y)**2 + (s.z - t.z)**2),
-                    intersect_over_union_res: get_intersect_over_union("res", nodes_map, s_nns, t_nns)
-                };                
-                nn_data.push(cell_data);
-            }            
-        }
-    } 
-
-    console.log(nn_data);
-
     let feat_distance = ["intersect_over_union_res",][0];
     let extent_dists = d3.extent(nn_data, d => d[feat_distance]);
-    console.log(extent_dists);
 
     // Scales
     let scale_x = d3.scaleBand().domain(selected_nodes).range([0, width]);
@@ -139,7 +190,7 @@ function plot_2d_heatmap_canvas(data, selected_nodes, nn_extent, canvas, interac
         if(d.pos_x === d.pos_y){
             ctx.font = '24px sansserif';
             ctx.fillStyle = "black";        
-            ctx.fillText(d.pos_x, scale_x(d.pos_x), scale_y(d.pos_y)+scale_y.bandwidth()*0.7, scale_x.bandwidth());
+            ctx.fillText(d.pos_y, scale_x(d.pos_x), scale_y(d.pos_y)+scale_y.bandwidth()*0.7, scale_x.bandwidth());
         }
 
         // Interaction
@@ -147,9 +198,6 @@ function plot_2d_heatmap_canvas(data, selected_nodes, nn_extent, canvas, interac
         interaction_ctx.fillStyle = d.fillStyleInteraction;
         interaction_ctx.fillRect(scale_x(d.pos_x), scale_y(d.pos_y), scale_x.bandwidth(), scale_y.bandwidth());
     });
-
-
-    console.log(interaction_map);
 
     // Interactivity
     d3.select(canvas).on("mousemove", function(event){
@@ -177,6 +225,7 @@ function plot_2d_heatmap_canvas(data, selected_nodes, nn_extent, canvas, interac
 }
 
 function neighborhood_comparison_visualization(structure, modifications, nearest_neighbors){
+    
     let data = {
         structure: structure,
         modifications: modifications,
@@ -192,42 +241,59 @@ function neighborhood_comparison_visualization(structure, modifications, nearest
         res_name: d.RES_name
     }));
 
+    //let selected_nodes = [0, 10, 12, 33, 46, 55];
+    let selected_nodes = Array.from(data.nodes_map.keys()).filter((d, i) => Math.random() > 0.95);
+
+    //let extent = {type:"radius", value:20}
+    let nn_extent = {type:"num_nodes", value:5} // TODO add menu for this
+    
+    function get_nn_map(nearest_neighbors_data, selected_nodes, nn_extent){
+        let nn_map = new Map();
+        nearest_neighbors_data.forEach(d => {
+            if(selected_nodes.includes(d.POS_x)){
+                if(nn_map.has(d.POS_x)){
+                    let arr = nn_map.get(d.POS_x);
+                    if(nn_extent.type === "ball_radius"){
+                        if(d.distance_ca <= nn_extent.value){
+                            arr.push({target: d.POS_y, edge_w: d.distance_ca})
+                        }
+                    }else if(nn_extent.type == "num_nns"){
+                        if(arr.length - 1 < nn_extent.value){
+                            arr.push({target: d.POS_y, edge_w: d.distance_ca})
+                        }
+                    }                                
+                    nn_map.set(d.POS_x, arr); // maybe costly to repeat it when its not needed
+                }else{
+                    nn_map.set(d.POS_x, [{target: d.POS_y, edge_w: d.distance_ca}]);
+                }
+            }
+        });
+        return nn_map
+    }
+
+    data.nn_map = get_nn_map(data.nearest_neighbors, selected_nodes, nn_extent);  
+
     const width = 800;
     const height = 800;
 
-    const str_vis_div = d3.select("#structure_visualization_widget");
+    const str_vis_div = d3.select("#structure_visualization_widget");    
 
     str_vis_div.append("canvas")
-        .attr("id", "layer_2d_canvas_interactivity")
-        .attr("width", width)
-        .attr("height", height)
-        //.attr("style", "position: absolute; left: 0; top: 0; z-index: 1;");
-        .attr("style", "display: none; position: absolute; left: 0; top: 0; z-index: 0;");
-
-    str_vis_div.append("canvas")
-        .attr("id", "layer_2d_canvas")
+        .attr("id", "widget_nns_heatmap")
         .attr("width", width)
         .attr("height", height)
         .attr("style", "position: absolute; left: 0; top: 0; z-index: 2;");
 
-    str_vis_div.append("canvas")
-        .attr("id", "layer_2d_canvas_nn_comparison")
+    str_vis_div.append("svg")
+        .attr("id", "widget_nns_graph")
         .attr("width", width/2)
         .attr("height", height/2)
         .attr("style", "position: absolute; left: 0; top: "+(height/2)+"px; z-index: 1;");    
 
-    const canvas = document.getElementById("layer_2d_canvas");
-    const canvas_interactivity = document.getElementById("layer_2d_canvas_interactivity");
-    const canvas_nn_analyzer = document.getElementById("layer_2d_canvas_nn_comparison");
-
-    const ctx_nn_analyzer = canvas_nn_analyzer.getContext("2d");
-    ctx_nn_analyzer.fillStyle = "black";
-    ctx_nn_analyzer.fillRect(0,0,width/2,height/2);
+    const canvas = document.getElementById("widget_nns_heatmap");
+    const svg_nns_graph = document.getElementById("widget_nns_graph");    
 
     // TODO: mechanisms for selecting nodes. For instance all nodes with a certain mod
-
-    //let selected_nodes = [0, 10, 12, 33, 46, 55];
-    let selected_nodes = Array.from(data.nodes_map.keys()).filter((d, i) => Math.random() > 0.95);
 
     function configure_extent_slider(extent_type){
         let slider_name = document.getElementById("extent_type_name");
@@ -249,20 +315,17 @@ function neighborhood_comparison_visualization(structure, modifications, nearest
         slider.oninput = function(){
             nn_extent = {type: extent_type, value: this.value};
             document.getElementById("extent_selected_value").innerHTML = this.value;
-            console.log(nn_extent);
-            plot_2d_heatmap_canvas(data, selected_nodes, nn_extent, canvas, canvas_interactivity, width, height);
+            data.nn_map = get_nn_map(data.nearest_neighbors, selected_nodes, nn_extent);  
+            plot_nns_heatmap(data, selected_nodes, canvas, width, height);
+            plot_nns_graph(data, selected_nodes, svg_nns_graph);
         }
         return 0;
     }
 
-    //let extent = {type:"radius", value:20}
-    let nn_extent = {type:"num_nodes", value:5} // TODO add menu for this    
-    
-
-    let extent_radios = document.getElementsByName("extent_type");
-    extent_radios.forEach(d => {
+    let extent_radius = document.getElementsByName("extent_type");
+    extent_radius.forEach(d => {
         d.onchange = function(){
-            extent_radios.forEach(d => {
+            extent_radius.forEach(d => {
                 if(d.checked){
                     configure_extent_slider(d.value);
                 }
@@ -270,11 +333,9 @@ function neighborhood_comparison_visualization(structure, modifications, nearest
         }
     })
     
-    
 
-    
-
-    plot_2d_heatmap_canvas(data, selected_nodes, nn_extent, canvas, canvas_interactivity, width, height);
+    plot_nns_heatmap(data, selected_nodes, canvas, width, height);
+    plot_nns_graph(data, selected_nodes, svg_nns_graph);
 }
 
 const promises = [
