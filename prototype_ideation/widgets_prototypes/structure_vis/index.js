@@ -56,12 +56,17 @@ function foldvis_app(all_structures, all_modifications, all_nns){
         }
     });
     console.log(var_height_options);
-    let var_size = {name: "num_mods_total"} ; // size might be hard to differentiate in current encoding, maybe better to do color orbits?
+    let var_height = var_height_options.get("num_mods_total"); // size might be hard to differentiate in current encoding, maybe better to do color orbits?
 
     // configure menus for scales
     let var_color_select_el = document.getElementById("var-color");
     var_color_options.forEach(v => {
         d3.select(var_color_select_el).append("option").attr("value", v.name).text(v.desc);
+    })
+
+    let var_height_select_el = document.getElementById("var-height");
+    var_height_options.forEach(v => {
+        d3.select(var_height_select_el).append("option").attr("value", v.name).text(v.desc);
     })
 
     let scale_color;
@@ -75,11 +80,25 @@ function foldvis_app(all_structures, all_modifications, all_nns){
     }
     scale_color = configure_scale_color(structure_data.structure, var_color);
 
+    let scale_height;
+    function configure_scale_height(data, var_height){
+        let scale = d3.scaleLinear().domain([0, d3.max(data, d => d[var_height.name])]);
+        return scale;
+    }
+    scale_height = configure_scale_height(structure_data.structure, var_height);
+
     // Vis config
     let config = {
         scale_color: scale_color,
         var_color: var_color,
+        scale_height: scale_height,
+        var_height: var_height,
+        orbit_controls_enabled: false,
+        bulk_selection_enabled: false,
+        show_links_in_3d: false,
+        window_square_size: Math.min(window.innerHeight-100, window.innerWidth)        
     }
+    config.inner_radius = parseInt((config.window_square_size/2)*0.9);
 
     let structure_vis_el = document.getElementById("structure_vis_widget");
     structure_visualization(structure_data, structure_vis_el, state, config);
@@ -90,9 +109,37 @@ function foldvis_app(all_structures, all_modifications, all_nns){
         let var_color_value = var_color_select_el.options[var_color_select_el.selectedIndex].value;
         config.var_color = var_color_options.get(var_color_value);
         config.scale_color = configure_scale_color(structure_data.structure, config.var_color);
-        console.log(config);
         structure_visualization(structure_data, structure_vis_el, state, config);
     });
+
+    d3.select(var_height_select_el).on("change", d => {
+        let var_height_value = var_height_select_el.options[var_height_select_el.selectedIndex].value;
+        config.var_height = var_height_options.get(var_height_value);
+        console.log(config.var_height);
+        config.scale_height = configure_scale_height(structure_data.structure, config.var_height);
+        structure_visualization(structure_data, structure_vis_el, state, config);
+    });
+
+    d3.select("#enable-orbit-controls").on("change", d => {        
+        config.orbit_controls_enabled = d3.select("#enable-orbit-controls").node().checked;
+        structure_visualization(structure_data, structure_vis_el, state, config);
+    });
+
+    d3.select("#enable-bulk-selection").on("change", d => {        
+        config.bulk_selection_enabled = d3.select("#enable-bulk-selection").node().checked;
+        structure_visualization(structure_data, structure_vis_el, state, config);
+    });
+
+    d3.select("#show-links-in-3d").on("change", d => {        
+        config.show_links_in_3d = d3.select("#show-links-in-3d").node().checked;
+        structure_visualization(structure_data, structure_vis_el, state, config);
+    });
+
+    d3.select(window).on("resize", d => {        
+        config.window_square_size = Math.min(window.innerHeight-200, window.innerWidth);
+        config.inner_radius = parseInt((config.window_square_size/2)*0.9);
+        structure_visualization(structure_data, structure_vis_el, state, config);
+    })
 
 }
 
@@ -112,28 +159,42 @@ function foldvis_app(all_structures, all_modifications, all_nns){
     // data.nearest_neighbors = data.nearest_neighbors.filter(d => d.POS_x < 100 && d.POS_y < num_res);
 
     // General widget settings
-    const window_square_size = Math.min(window.innerHeight-100, window.innerWidth) ;
-    const width = window_square_size;
-    const height = window_square_size;
-    const inner_radius = parseInt((width/2)*0.9);
-    const radius_res_orbit = inner_radius + 10;
-    const radius_max = height/2;    
+    
+    let width = config.window_square_size;
+    let height = config.window_square_size;
+    let inner_radius = config.inner_radius;
+    let radius_res_orbit = inner_radius + 10;
+    let radius_max = height/2;    
 
     // Setting up visualization environment
     const str_vis_div = d3.select(structure_vis_el);
-    str_vis_div.attr("style", "position: absolute; top: 100px;");
+    str_vis_div.attr("style", "position: absolute; top: 200px;");
 
-    let canvas_3d = str_vis_div.append("canvas")
-        .attr("id", "layer_3d_canvas")
-        .attr("width", width)
-        .attr("height", height)
-        .attr("style", "position: absolute; left: 0; top: 0; z-index: 0;").node();
-
-    let svg_2d = str_vis_div.append("svg")
-        .attr("id", "layer_2d_svg")
-        .attr("width", width)
-        .attr("height", height)
-        .attr("style", "position: absolute; left: 0; top: 0; z-index: 1;").node();
+    let canvas3d = str_vis_div.select("#layer_3d_canvas");
+    if(canvas3d.empty()){
+        canvas3d = str_vis_div.append("canvas")
+            .attr("id", "layer_3d_canvas")
+            .attr("width", width)
+            .attr("height", height)
+            .attr("style", "position: absolute; left: 0; top: 0; z-index: 0;");
+    }else{
+        canvas3d
+            .attr("width", width)
+            .attr("height", height);
+    }
+    
+    let svg2d = str_vis_div.select("#layer_2d_svg");
+    if(svg2d.empty()){
+        svg2d = str_vis_div.append("svg")
+            .attr("id", "layer_2d_svg")
+            .attr("width", width)
+            .attr("height", height)
+            .attr("style", "position: absolute; left: 0; top: 0; z-index: 1;")
+    }else{
+        svg2d
+            .attr("width", width)
+            .attr("height", height);
+    }
 
     // Grid lines (for debugging purposes)
 
@@ -173,9 +234,9 @@ function foldvis_app(all_structures, all_modifications, all_nns){
 
     // Plotting the widget components
 
-    let controls = plot_3d_structure(structure_data, canvas_3d, svg_2d, width, height, inner_radius, state, config);
-    plot_2d_structure_svg(structure_data, svg_2d, width, height, radius_res_orbit, radius_max, state, config);   
-    controls.enabled = false; 
+    let controls = plot_3d_structure(structure_data, canvas3d.node(), svg2d.node(), width, height, inner_radius, state, config);
+    plot_2d_structure_svg(structure_data, svg2d.node(), width, height, radius_res_orbit, radius_max, state, config);   
+    controls.enabled = config.orbit_controls_enabled; 
 }
 
 /**
@@ -185,19 +246,20 @@ function foldvis_app(all_structures, all_modifications, all_nns){
 function plot_3d_structure(data, canvas_node, controls_element, width, height, inner_radius, state, config){
 
     let scale_color = config.scale_color;
+    let var_color = config.var_color.name;
 
     let structure = data["structure"];
     let points_data = structure.map(d => {
         return {
             "x": d.x_coord_ca, 
             "y": d.y_coord_ca, 
-            "z": d.z_coord_ca
+            "z": d.z_coord_ca,
+            "var_color": d[var_color]
         }
     });
 
-    console.log(points_data);
-
     const scene = new THREE.Scene();
+    console.log(scene);
     scene.background = new THREE.Color("rgb(255,255,255)");
     let camera = new THREE.PerspectiveCamera(75, width/height, 0.1, 2000);
     const renderer = new THREE.WebGLRenderer({"canvas": canvas_node});
@@ -227,11 +289,11 @@ function plot_3d_structure(data, canvas_node, controls_element, width, height, i
         particles_positions[(i * 3) + 1] = points_data[i].y;
         particles_positions[(i * 3) + 2] = points_data[i].z;
 
-        particles_colors[(i * 3) + 0] = Math.random();
-        particles_colors[(i * 3) + 1] = Math.random();
-        particles_colors[(i * 3) + 2] = Math.random();
+        let color = d3.rgb(scale_color(points_data[i]["var_color"]));
+        particles_colors[(i * 3) + 0] = color.r/255;
+        particles_colors[(i * 3) + 1] = color.g/255;
+        particles_colors[(i * 3) + 2] = color.b/255;
     }
-    console.log(new THREE.Color("rgb(134,56,45)"));
 
     particles.setDrawRange(0, points_data.length);
     particles.setAttribute("position", new THREE.Float32BufferAttribute(particles_positions, 3).setUsage(THREE.DynamicDrawUsage));
@@ -265,9 +327,9 @@ function plot_3d_structure(data, canvas_node, controls_element, width, height, i
     camera.position.add(moving_vec);    
     camera.lookAt(points_center);
 
-    console.log(camera.position);
-    console.log(points_center);
-    console.log(moving_vec);
+    d3.select(canvas_node).on("click", d => {
+        console.log("clicked canvas3d");
+    });
 
     const controls = new OrbitControls(camera, controls_element);    
 
@@ -281,8 +343,7 @@ function plot_3d_structure(data, canvas_node, controls_element, width, height, i
     return controls;
 }
 
-function plot_2d_structure_svg(data, svg_node, width, height, radius_res_orbit, radius_max, state, config){
-
+function plot_2d_structure_svg(data, svg_node, width, height, radius_res_orbit, radius_max, state, config){    
     // Data related stuff
     let structure = data.structure;
     let nns = data.nns;
@@ -291,8 +352,8 @@ function plot_2d_structure_svg(data, svg_node, width, height, radius_res_orbit, 
 
     let scale_color = config.scale_color;
     let var_color = config.var_color.name; 
-
-    let var_height = "num_mods_total";
+    let var_height = config.var_height.name;
+    let bulk_selection_enabled = config.bulk_selection_enabled;
 
     // - Orbit scale setup
     const scale_res_orbit = d3.scaleBand().domain(structure.map(d => d.POS)).range([0, (19/10)*Math.PI]);
@@ -304,42 +365,68 @@ function plot_2d_structure_svg(data, svg_node, width, height, radius_res_orbit, 
     const y1 = radius_res_orbit * Math.cos(scale_res_orbit.bandwidth());
 
     const square_size = ((x1-x0)**2 + (y1-y0)**2)**0.5;
+    console.log(width, height, radius_res_orbit, square_size);
         
     const radius_start_bars = radius_res_orbit + square_size;
 
-    const scale_bars_height = d3.scaleLinear().domain(d3.extent(structure, d => d[var_height])).range([0, radius_max - radius_start_bars]);
+    let scale_bars_height = config.scale_height;
+    scale_bars_height.range([0, radius_max - radius_start_bars]);
+    console.log(scale_bars_height.domain());
+    console.log(scale_bars_height.range());
+    //console.log(structure.forEach(d => scale_bars_height(d[var_height])))
 
     // Plotting
 
     let svg = d3.select(svg_node);
 
+    console.log(state);
+
     // - squares data
-    let squares_data = structure.map(d => {
-        let angle_rad = scale_res_orbit(d.POS);
-        return {
-            "acc": d.UniAcc, // indexing info
-            "pos": d.POS, // indexing info
-            "feat_color": d[var_color],
-            "color": scale_color(d[var_color]),
-            "angle_rad": angle_rad,
-            "angle_deg": -angle_rad * (180/Math.PI),
-            "x": radius_res_orbit * Math.sin(angle_rad),
-            "y": radius_res_orbit * Math.cos(angle_rad),            
-            "colored": true, // all squares start colored
-            "highlighted": false,  // no square starts selected
-            "bar_height": scale_bars_height(d[var_height])
-        };
-    })
+    function update_squares_data(structure_data, selected_elements){
+        let squares_data = structure_data.map(d => {
+            let angle_rad = scale_res_orbit(d.POS);
+            
+            return {
+                "acc": d.UniAcc, // indexing info
+                "pos": d.POS, // indexing info
+                "var_color": d[var_color],
+                "color": scale_color(d[var_color]),
+                "angle_rad": angle_rad,
+                "angle_deg": -angle_rad * (180/Math.PI),
+                "x": radius_res_orbit * Math.sin(angle_rad),
+                "y": radius_res_orbit * Math.cos(angle_rad),            
+                "colored": true, // all squares start colored
+                "highlighted": false,  // no square starts selected
+                "bar_height": scale_bars_height(d[var_height])
+            };
+        })
+        console.log(selected_elements);
+        Array.from(selected_elements.keys()).forEach(d => {
+            console.log(d);
+            for (let i = 0; i < squares_data.length; i++) {
+                const e = squares_data[i];
+                if(e.pos === d){
+                    squares_data[i].highlighted = true;
+                    break;                   
+                }
+            }
+        })
+        return squares_data;
+    }
+    let squares_data = update_squares_data(structure, state.selected_elements)
 
     console.log(squares_data);
 
     // Residues squares 
-    let res_squares_group = svg.append("g").attr("id", "res_squares");
-
-    let res_squares = res_squares_group.selectAll("rect")
-        .data(squares_data, d => d.acc+"-"+d.pos)
-        .enter()
-            .append("rect")
+    let res_squares_group = svg.select("#res_squares");
+    if(res_squares_group.empty()){
+        res_squares_group = svg.append("g").attr("id", "res_squares");
+    }   
+    
+    function update_squares(data){
+        let res_squares = res_squares_group.selectAll("rect")
+            .data(data, d => d.acc+"-"+d.pos)
+            .join("rect")
                 .attr("x", d => d.x + (width/2))
                 .attr("y", d => d.y + (height/2))
                 .attr("width", square_size)
@@ -347,23 +434,27 @@ function plot_2d_structure_svg(data, svg_node, width, height, radius_res_orbit, 
                 .attr("fill", d => d.colored ? d.color : "gray")
                 .attr("stroke", d => d.highlighted ? "rgba(0, 155, 155, 1)" : "none")
                 .attr("transform", d => "rotate("+d.angle_deg+" "+(d.x+(width/2))+" "+(d.y+(height/2))+")"); 
+        return res_squares;
+    }
+    let res_squares = update_squares(squares_data);
 
     // Residues bars
-    let res_bars_group = svg.append("g").attr("id", "res_bars");
+    let res_bars_group = svg.select("#res_bars");
+    if(res_bars_group.empty()){
+        res_bars_group = svg.append("g").attr("id", "res_bars");
+    }    
 
     let res_bars = res_bars_group.selectAll("rect")
         .data(squares_data, d => d.acc+"-"+d.pos)
-        .enter()
-            .append("rect")
-                .attr("x", d => d.x + (width/2))
-                .attr("y", d => d.y + (height/2) + square_size)
-                .attr("width", square_size)
-                .attr("height", d => d.bar_height)
-                .attr("fill", d => d.colored ? "gray" : "lightgray")
-                .attr("transform", d => "rotate("+d.angle_deg+" "+(d.x+(width/2))+" "+(d.y+(height/2))+")");
+        .join("rect")
+            .attr("x", d => d.x + (width/2))
+            .attr("y", d => d.y + (height/2) + square_size)
+            .attr("width", square_size)
+            .attr("height", d => d.bar_height)
+            .attr("fill", d => d.colored ? "gray" : "lightgray")
+            .attr("transform", d => "rotate("+d.angle_deg+" "+(d.x+(width/2))+" "+(d.y+(height/2))+")");
 
-    function create_nns_chords(datum, squares_data, nns_data){
-        console.log(datum);
+    function create_nns_chords(datum, squares_data, nns_data, chords_class){
 
         // Chords data
         let datum_nn = nns_data.filter(d => (d.POS_x == datum.pos)).map(d => {
@@ -380,10 +471,8 @@ function plot_2d_structure_svg(data, svg_node, width, height, radius_res_orbit, 
             };
         });
 
-        console.log(datum_nn);
-
         // Residues neighbor chords
-        let res_chords_group = svg.append("g").attr("id", "res_chords");
+        let res_chords_group = svg.append("g").attr("id", "res_chords").attr("class", chords_class);
 
         res_chords_group.selectAll("line").data(datum_nn, d => d.acc+"-"+d.pos_x+"-"+d.pos_y)
             .enter()
@@ -395,37 +484,76 @@ function plot_2d_structure_svg(data, svg_node, width, height, radius_res_orbit, 
                     .attr("stroke", "rgba(100,100,100,0.1)");
     }
 
-    function clean_nns_chords(){
+    function clean_nns_chords(chords_class){
         console.log("clean");
-        svg.select("#res_chords").remove();
+        svg.select("#res_chords."+chords_class).remove();
     }
 
     // Interaction
+
+    svg.on("click", function(event, datum){
+        let [x, y] = d3.pointer(event)
+        x = x - width/2;
+        y = y - height/2;
+        let norm_vec = Math.sqrt(x**2 + y**2);
+        if(norm_vec < radius_res_orbit){
+            console.log("Withing field of view. Sending event to canvas3d.");
+            d3.select("canvas").dispatch("click");
+        }else{
+            console.log("Outside field of view.");
+        }
+    })
     
     function onclick_res_squares(event, datum){
         /*
         Clicking an element "selects" it.
         Meaning that it gets added to a list of selected 
         elements for neighbor analysis.
-         */
-        let node = d3.select(this);    
-        if(state.selected_elements.has(datum.pos)){
-            state.selected_elements.delete(datum.pos);
+         */        
+        let node = d3.select(this);  
+        let deselect = state.selected_elements.has(datum.pos); // if false then select
+        console.log("Bulk selection enabled: " + bulk_selection_enabled);
+        console.log("Deselecting: " + deselect);
+
+        if(bulk_selection_enabled){
+            let var_select = datum.var_color;
+            squares_data.forEach(d => {
+                if(d.var_color === var_select){
+                    if(deselect){
+                        if(state.selected_elements.has(d.pos)){
+                            console.log("State has: " + d.pos);
+                            console.log(state.selected_elements.delete(d.pos));
+                        }
+                    }else{
+                        state.selected_elements.set(d.pos, d);
+                    }
+                    state.selected_elements.set(d.pos, d);
+                }
+            });
         }else{
-            state.selected_elements.set(datum.pos, datum);
-        }        
-        console.log(state); 
+            if(deselect){
+                state.selected_elements.delete(datum.pos);
+                clean_nns_chords("selection")
+            }else{
+                state.selected_elements.set(datum.pos, datum);
+                create_nns_chords(datum, squares_data, nns, "selection");
+            }
+        }
+        console.log(state.selected_elements);
+        squares_data = update_squares_data(structure, state.selected_elements)
+        console.log(squares_data);
+        res_squares = update_squares(squares_data);           
     }
 
     function onmouseenter_res_squares(event, datum){
         // Toggles information of the res at (acc, pos)
         let node = d3.select(this);
-        create_nns_chords(datum, squares_data, nns);
+        create_nns_chords(datum, squares_data, nns, "hover");
     }
 
     function onmouseout_res_squares(event, datum){
         // Toggles information of the res at (acc, pos)
-        clean_nns_chords();
+        clean_nns_chords("hover");
     }
 
     res_squares.on("click", onclick_res_squares);

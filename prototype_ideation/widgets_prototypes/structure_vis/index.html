@@ -9,15 +9,43 @@
 </head>
 <body>
     <div id="structure_vis_widget"></div>
+
     <div id="structure_vis_settings">
+
+      <!-- Selection settings  -->
+
       <div id="dropdown-var-color">
-        <label for="var-color">Feature to color by:</label>
+        <label for="var-color">Feature to color by: </label>
         <select name="var-color" id="var-color"></select>
       </div>
+
       <div id="dropdown-var-height">
-        <label for="var-height">Feature for bars height:</label>
+        <label for="var-height">Feature for bars height: </label>
         <select name="var-height" id="var-height"></select>
       </div>
+
+      <div id="checkbox-orbit-controls">
+        <label for="enable-orbit-controls">3D orbit controls: </label>
+        <input type="checkbox" id="enable-orbit-controls" name="enable-orbit-controls">        
+      </div>
+
+      <div id="checkbox-bulk-selection">
+        <label for="enable-bulk-selection">Bulk selection: </label>
+        <input type="checkbox" id="enable-bulk-selection" name="enable-bulk-selection">        
+      </div>
+
+      <div id="checkbox-links-in-3d">
+        <label for="show-links-in-3d">Show links in 3d view: </label>
+        <input type="checkbox" id="show-links-in-3d" name="show-links-in-3d">        
+      </div>
+
+      <div>
+        <input type="button" id="select-all" name="select-all" value="Select all">
+        <input type="button" id="clear-selection" name="clear-selection" value="Clear selection">
+      </div>
+
+      <!-- Neighborhood settings  -->
+
     </div>
 
     <!-- <div id="tooltip">
@@ -31,11 +59,10 @@
     <script type="importmap">
         {
           "imports": {            
-            "three": "https://unpkg.com/browse/three@0.97.0/build/three.module.js"
+            "three":  "/node_modules/three/build/three.module.js"
           }
         }
     </script>
-    <!-- "three": "/node_modules/three/build/three.module.js" -->
 
     <!-- <script src="https://d3js.org/d3.v7.min.js"></script> -->
     <script src="/node_modules/d3/dist/d3.js"></script>
