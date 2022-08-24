@@ -7,129 +7,7 @@
     <title>Document</title>
     <link rel="stylesheet" href="index.css">
     <style>
-        :root {
-            --primary-color: #3700B3;
-            --secondary-color: #03DAC5;
-            --background-color: #121212;
-            --surface-color: #232323;
-            --error-color: #CF6679;
-            --font-color-on-primary: #FFFFFF;
-            --font-color-on-secondary: #000000;
-            --font-color-on-surface: #FFFFFF;
-            --border-radius: 10px;
-        }
-
-        body {
-            font-family: 'Trebuchet MS', sans-serif;
-        }
-
-        h1 {
-            font-size: 1em;
-        }
-
-        h2 {
-            font-size: 1em;
-        }
-
-        #app {
-            height: 100vh;
-            width: 100vw;
-        }
-        #toolbar {
-            grid-column-start: 1;
-            grid-column-end: 4;
-            grid-row-start: 1;
-            grid-row-end: 1;
-            width: 100%;
-            height: 100%;
-            background-color: var(--primary-color);
-            color: var(--font-color-on-primary);
-        }
-        #toolbar-title {
-            display: inline-block;
-            padding-left: 15px;
-            padding-top: 10px
-        }
-        #toolbar-dataset-selector {
-            display: inline-block;
-            float: right;
-        }
-        #main-area {            
-            display: grid;
-            grid-template-columns: 1fr 3fr 2fr;
-            grid-template-rows: 60px 1fr;
-            height: 100%;
-            width: 100%;
-            background: var(--background-color);
-        }        
-        #options-panel {
-            grid-column-start: 1;
-            grid-column-end: 2;
-            grid-row-start: 2;
-            grid-row-end: 2;
-            background-color: var(--surface-color);
-            margin: 5px;
-            padding: 10px;
-            border-radius: var(--border-radius);
-            color: var(--font-color-on-surface);
-        }
-        #main-panel {
-            grid-column-start: 2;
-            grid-column-end: 3;
-            grid-row-start: 2;
-            grid-row-end: 2;
-            background: var(--surface-color);
-            margin: 5px;
-            border-radius: var(--border-radius);
-            position: relative; 
-        }
-        #side-panel {
-            grid-column-start: 3;
-            grid-column-end: 4;
-            grid-row-start: 2;
-            grid-row-end: 2;
-            background-color: transparent;
-            display: grid;
-            grid-template-rows: 1fr 1fr;
-            grid-template-columns: 1fr;
-        }
-        #side-panel-top {
-            grid-row-start: 1;
-            grid-row-end: 2;
-            background: var(--surface-color);
-            border-radius: var(--border-radius);
-            margin: 5px;
-        }
-
-        #side-panel-top > canvas {
-            border-radius: var(--border-radius);
-        }
-        #side-panel-bottom {
-            grid-row-start: 2;
-            grid-row-end: 3;
-            background-color: var(--surface-color);
-            border-radius: var(--border-radius);
-            margin: 5px;
-        }
-        #toolbar-dataset-selector {
-            grid-column-start: 2;
-            grid-column-end: 2;
-        }
-        path.unselected{
-            fill: yellow;
-        }
-        path.selected{
-            fill: red;
-        }
-        .selected{
-            fill: red;
-        }
-        path.hovered{
-            fill: pink;
-        }
-        .hovered{
-            opacity: 0.5;
-        }
+        
     </style>
 </head>
 <body>
@@ -143,65 +21,93 @@
                     <select name="dataset-picker" id="dataset-picker"></select>
                 </div>
             </div>
+
             <div id="options-panel">
-
-                <h2>General settings</h2>                
-                <div id="nn-inspector-toggle">
-                    <label for="nn-inspector-enabled">Mode: </label>
-                    <select name="inspection-mode-select" id="inspection-mode-select">
-                        <option value="residues">Residues</option>
-                        <option value="neighborhoods">Neighborhoods</option>
-                    </select>
+                
+                <div class="panel-title">
+                    <h2>Visualization parameters</h2>  
+                </div>              
+                
+                <div class="options-block">
+                    <h3>General settings</h3>                
+                    <div id="nn-inspector-toggle">
+                        <label for="nn-inspector-enabled">Mode: </label>
+                        <select name="inspection-mode-select" id="inspection-mode-select">
+                            <option value="residues">Residues</option>
+                            <option value="neighborhoods">Neighborhoods</option>
+                        </select>
+                    </div>
+                    <div id="center-view-widget">
+                        <label for="center-view-widget-select">Main panel center widget: </label>
+                        <select name="center-view-widget-select" id="center-view-widget-select">
+                            <option value="graph-view">Graph view</option>
+                            <option value="chord-view">Chord view</option>
+                        </select>
+                    </div>
                 </div>
-                <div id="center-view-widget">
-                    <label for="center-view-widget-select">Main panel center widget: </label>
-                    <select name="center-view-widget-select" id="center-view-widget-select">
-                        <option value="graph-view">Graph view</option>
-                        <option value="chord-view">Chord view</option>
-                    </select>
-                </div>
-
-                <h2>Encodings</h2>
-                <div>
-                    <label for="select-arcs-colors">Arcs colors: </label>
-                    <select name="select-arcs-colors" id="select-arcs-colors"></select>
-                </div>
-                <div>
-                    <label for="select-arcs-height">Arcs height: </label>
-                    <select name="select-arcs-height" id="select-arcs-height"></select>
-                </div>
-                <div>
-                    <label for="select-ribbon-colors">Ribbons colors: </label>
-                    <select name="select-ribbon-colors" id="select-ribbon-colors"></select>
-                </div>
-
-                <h2>Neighborhood definition</h2>
-                <div>
-                    <label for="select-neighborhood-type">Neighborhood type: </label>
-                    <select name="select-neighborhood-type" id="select-neighborhood-type">
-                        <option value="knn">kNN</option>
-                        <option value="radius">Radius</option>
-                    </select>
-                </div>
-                <div>
-                    <div id="restriction-input-block">
-                        <input type="range" min=0 max=10 step=1 id="restriction-input">
-                        <div id="restriction-input-labels" style="display: inline-block;"></div>                        
+                
+                <div class="options-block">
+                    <h3>Encodings</h3>
+                    <div>
+                        <label for="select-arcs-colors">Arcs colors: </label>
+                        <select name="select-arcs-colors" id="select-arcs-colors"></select>
+                    </div>
+                    <div>
+                        <label for="select-arcs-height">Arcs height: </label>
+                        <select name="select-arcs-height" id="select-arcs-height"></select>
+                    </div>
+                    <div>
+                        <label for="select-ribbon-colors">Ribbons colors: </label>
+                        <select name="select-ribbon-colors" id="select-ribbon-colors"></select>
                     </div>
                 </div>
 
-                <h2>Selection</h2>
-                <div>
-                    <button id="button-clear-selection">Clear selection</button>
+                <div class="options-block">
+                    <h3>Neighborhood definition</h3>
+                    <div>
+                        <label for="select-neighborhood-type">Neighborhood type: </label>
+                        <select name="select-neighborhood-type" id="select-neighborhood-type">
+                            <option value="knn">kNN</option>
+                            <option value="radius">Radius</option>
+                        </select>
+                    </div>
+                    <div>
+                        <div id="restriction-input-block">
+                            <input type="range" min=0 max=10 step=1 id="restriction-input">
+                            <div id="restriction-input-labels" style="display: inline-block;"></div>                        
+                        </div>
+                    </div>
                 </div>
-                <div id="selection-info">
-
+                
+                <div class="options-block">
+                    <h3>Selection</h3>
+                    <div>
+                        <button id="button-clear-selection">Clear selection</button>
+                    </div>
+                    <div id="selection-info"></div>
                 </div>
+                                
             </div>
-            <div id="main-panel"></div>
+
+            <div id="main-panel">
+                <div class="panel-title">
+                    <h2>Orbit neighborhood inspector</h2>
+                </div>
+                <div id="tooltip"></div>
+            </div>
+
             <div id="side-panel">
-                <div id="side-panel-top"></div>
-                <div id="side-panel-bottom"></div>
+                <div id="side-panel-top">
+                    <div class="panel-title">
+                        <h2>Protein 3D structure</h2>
+                    </div>
+                </div>
+                <div id="side-panel-bottom">
+                    <div class="panel-title">
+                        <h2>Bulk selector</h2>
+                    </div>
+                    <div id="side-panel-bottom-vis"></div>
+                </div>
             </div>
         </div>    
     </div>

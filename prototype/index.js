@@ -2,6 +2,13 @@ import * as THREE from "three";
 import {OrbitControls} from "../../../node_modules/three/examples/jsm/controls/OrbitControls.js"
 
 /**
+ * Constants
+ */
+
+const COLOR_HOVER = "rgb(3, 218, 197)";
+const COLOR_SELECT = "rgb(3, 218, 197)";
+
+/**
  * Load app data
  */
 
@@ -137,9 +144,34 @@ function update_state(prot_uniacc){
         }
     });
 
-    console.log(state);
+    update_data_maps();
 
 }  
+
+function update_data_maps(){
+    state.structure_map = new Map(); // pos -> info
+    state.structure.forEach(d => state.structure_map.set(d.POS, d));
+
+    state.modifications_map = new Map(); // pos -> modifications
+    Array.from(state.structure_map.keys()).forEach(k => state.modifications_map.set(k, []));
+    state.modifications.forEach(d => state.modifications_map.get(d.POS).push(d));
+    
+    state.neighbors_map = new Map(); // pos -> neighbors pos
+    Array.from(state.structure_map.keys()).forEach(k => state.neighbors_map.set(k, []));
+    state.neighbors.forEach(d => state.neighbors_map.get(d.POS_x).push({POS: d.POS_y, value: d.distance_ca}));
+
+    Array.from(state.neighbors_map.keys()).forEach(k => {
+        let arr = state.neighbors_map.get(k);
+        arr.sort((a, b) => d3.ascending(a.value, b.value));
+        if(config.neighborhood_restriction_type === "knn"){
+            state.neighbors_map.set(k, arr.slice(1, config.neighborhood_restriction_value));
+        }else if(config.neighborhood_restriction_type === "radius"){
+            arr = arr.filter(d => d.value <= config.neighborhood_restriction_value);
+            state.neighbors_map.set(k, arr);
+        }            
+    });
+
+}
 
 function update_config(){
 
@@ -159,8 +191,8 @@ function update_config(){
     config.side_panel_top_width = document.getElementById("side-panel-top").offsetWidth;
     config.side_panel_top_height = document.getElementById("side-panel-top").offsetHeight;
 
-    config.side_panel_bottom_width = document.getElementById("side-panel-bottom").offsetWidth;
-    config.side_panel_bottom_height = document.getElementById("side-panel-bottom").offsetHeight;
+    config.side_panel_bottom_width = document.getElementById("side-panel-bottom-vis").offsetWidth;
+    config.side_panel_bottom_height = document.getElementById("side-panel-bottom-vis").offsetHeight;
 
     config.inspection_mode = document.getElementById("inspection-mode-select").value;
     config.main_panel_center_widget = document.getElementById("center-view-widget-select").value;
@@ -202,7 +234,6 @@ function configure_options(){
     });
 
     // Encodings
-
     
     const select_arcs_color = document.getElementById("select-arcs-colors").cloneNode(true);
     document.getElementById("select-arcs-colors").replaceWith(select_arcs_color); // remove event listeners
@@ -252,10 +283,10 @@ function configure_options(){
     // Neighborhood definition
 
     const select_restriction_type = document.getElementById("select-neighborhood-type").cloneNode(true);
-    document.getElementById("select-neighborhood-type").replaceWith(select_restriction_type.cloneNode(true));
+    document.getElementById("select-neighborhood-type").replaceWith(select_restriction_type);
 
     const restriction_input = document.getElementById("restriction-input").cloneNode(true);
-    document.getElementById("restriction-input").replaceWith(restriction_input.cloneNode(true));
+    document.getElementById("restriction-input").replaceWith(restriction_input);
 
     function update_restriction_input_labels(){
         const div_labels = document.getElementById("restriction-input-labels");
@@ -286,13 +317,17 @@ function configure_options(){
     select_restriction_type.addEventListener("change", function(){
         configure_neighborhood_restriction_input(select_restriction_type.value);
         update_config();
-        render_app();
+        update_data_maps();
+        render_main_panel();
+        //render_app();
     });
 
     restriction_input.addEventListener("input", function(){
         update_restriction_input_labels();        
         update_config();
-        render_app();
+        update_data_maps();
+        render_main_panel();
+        //render_app();
     });
 
     // Selection
@@ -312,304 +347,460 @@ function configure_options(){
  */
 
 function render_main_panel(){
-    primary_structure_orbit();
-    render_main_pane_center();
-}
 
-function render_main_pane_center(){
-    if(config.main_panel_center_widget === "graph-view"){
-        center_graph_view();
-    }else if(config.main_panel_center_widget === "chord-view"){
-        center_chord_view();
+    const width = config.main_panel_width;
+    const height = config.main_panel_height;
+
+    let svg_residues, svg_neighborhoods;
+
+    if(d3.select("#main-panel #svg-residues").empty()){
+        svg_residues = d3.select("#main-panel").append("svg")
+            .attr("id", "svg-residues")
+            //.attr("style", "position: absolute; z-index: 1; top: 0; left: 0;")
+    }else{
+        svg_residues = d3.select("#svg-residues");        
+        svg_residues.selectAll("*").remove();   
     }
+    svg_residues
+        .attr("width", width)
+        .attr("height", height)
+        .attr("style", "position: absolute; top: 0; left: 0;");;
+
+    if(d3.select("#main-panel #svg-neighborhoods").empty()){
+        svg_neighborhoods = d3.select("#main-panel").append("svg")
+            .attr("id", "svg-neighborhoods")
+            //.attr("style", "position: absolute; z-index: 1; top: 0; left: 0;")
+    }else{
+        svg_neighborhoods = d3.select("#svg-neighborhoods");        
+        svg_neighborhoods.selectAll("*").remove();   
+    }
+    svg_neighborhoods
+        .attr("width", width)
+        .attr("height", height)
+        .attr("style", "position: absolute; top: 0; left: 0;");
+
+    if(config.inspection_mode === "residues"){
+        console.log("Residues");
+        svg_residues.attr("style", "z-index: 1;");
+        svg_neighborhoods.attr("style", "z-index: 0;");
+    }else if(config.inspection_mode === "neighborhoods"){
+        console.log("Neighborhoods");
+        svg_residues.attr("style", "z-index: 0;");
+        svg_neighborhoods.attr("style", "z-index: 1;");
+    }
+
+    primary_structure_orbit();
+    center_graph_view();
 }
 
 function primary_structure_orbit(){
-    /**
-     * Idiom: structure orbit
-     * Permits an overview of the protein suitable for selecting 
-     * nodes/residues for analysis.
-     * The idiom is a (d3) chord layout, with the following available
-     * encodings:
-     * - Color of the arcs
-     * - Length of the arcs
-     * - Thickness of the arcs
-     * - Color of the ribbons
-     */
 
     // Data
-
     const structure = state.structure;
-    const modifications = state.modifications;
-    const neighbors = state.neighbors;
-
-    const structure_map = new Map(); // pos -> info
-    structure.forEach(d => structure_map.set(d.POS, d));
-
-    const modifications_map = new Map(); // pos -> modifications
-    Array.from(structure_map.keys()).forEach(k => modifications_map.set(k, []));
-    modifications.forEach(d => modifications_map.get(d.POS).push(d));
-    
-    const neighbors_map = new Map(); // pos -> neighbors pos
-    Array.from(structure_map.keys()).forEach(k => neighbors_map.set(k, []));
-    neighbors.forEach(d => neighbors_map.get(d.POS_x).push({target: d.POS_y, link: d.distance_ca}));
-
-    Array.from(neighbors_map.keys()).forEach(k => {
-        let arr = neighbors_map.get(k);
-        arr.sort((a, b) => d3.ascending(a.link, b.link));
-        if(config.neighborhood_restriction_type === "knn"){
-            neighbors_map.set(k, arr.slice(1, config.neighborhood_restriction_value));
-        }else if(config.neighborhood_restriction_type === "radius"){
-            arr = arr.filter(d => d.link <= config.neighborhood_restriction_value);
-            neighbors_map.set(k, arr);
-        }            
-    });
+    const structure_map = state.structure_map;
+    const modifications_map = state.modifications_map;
+    const neighbors_map = state.neighbors_map;
 
     // Container setup
 
     const width = config.main_panel_width;
     const height = config.main_panel_height;
-    const square_size = config.main_panel_square_size;
 
-    let svg;
-    if(d3.select("#main-panel").select("#structure-orbit").empty()){
-        console.log("create svg");
-        svg = d3.select("#main-panel").append("svg")
-            .attr("id", "structure-orbit")
-            .attr("style", "position: absolute; z-index: 1; top: 0; left: 0;")
-    }else{
-        svg = d3.select("#structure-orbit");        
-        svg.selectAll("*").remove();   
-    }
-    svg.attr("width", width).attr("height", height);
+    let svg = d3.select("#svg-residues");
+    svg.selectAll("*").remove();
 
     // Visualization parameters 
 
     const min_radius = config.structure_vis.min_radius;
     const max_radius = config.structure_vis.max_radius;
-    const start_nn_arcs_radius = min_radius;
-    const end_nn_arcs_radius = min_radius + 0.1 * (max_radius - min_radius);
-    const start_res_arcs = end_nn_arcs_radius;
-    const end_res_arcs = end_nn_arcs_radius + 0.9 * (max_radius - min_radius);;
+    const max_arc_thickness = max_radius - min_radius;
+    const fixed_arc_thickness_per = 0.07;
+    const between_orbit_gap_per = 0.01;
+    const num_orbit_thickness_per =  1 - (2 * fixed_arc_thickness_per + 2 * between_orbit_gap_per);
 
-    const scale_arcs_radius = config.scale_num.range([start_res_arcs + 5, end_res_arcs]);
-    const scale_arcs_colors = config.scale_color;
-    scale_arcs_colors.range(d3.schemeCategory10);
+    const start_pos_arcs_radius = min_radius;
+    const end_pos_arcs_radius = start_pos_arcs_radius + fixed_arc_thickness_per * max_arc_thickness;
+
+    const start_type_arcs_radius = end_pos_arcs_radius + between_orbit_gap_per * max_arc_thickness;
+    const end_type_arcs_radius = start_type_arcs_radius + fixed_arc_thickness_per * max_arc_thickness;
+
+    const start_num_arcs_radius = end_type_arcs_radius + between_orbit_gap_per * max_arc_thickness;
+    const end_num_arcs_radius = start_num_arcs_radius + num_orbit_thickness_per * max_arc_thickness;
+
     const color_var = state.color_var;
+    const num_var = state.num_var;
 
-    const num_pos = structure.length;
+    const scale_arcs_radius = config.scale_num.range([start_num_arcs_radius, end_num_arcs_radius]);
+    const scale_arcs_colors = config.scale_color.range(d3.schemeCategory10);
+    const scale_pos_color = d3.scaleSequential().domain(d3.extent(structure, d => +d.POS)).interpolator(d3.interpolateBlues);
+
+    const num_pos = structure_map.size;
     let graph = new Array(num_pos);
     for (let i = 0; i < num_pos; i++) {
         graph[i] = new Array(num_pos);
         for (let j = 0; j < num_pos; j++) {
             graph[i][j] = 0;
         }
-        neighbors_map.get(i).forEach(d => graph[i][d.target] = 1);
+        neighbors_map.get(i).forEach(d => graph[i][d.POS] = 1);
     }
 
-    // state.neighbors.forEach(d => {
-    //     graph[d.POS_x][d.POS_y] = 1;
-    // });
-
     let chord_maker = d3.chord();
-    let chord = chord_maker(graph);
+    let chord = chord_maker(graph); 
 
     let arc_creator, ribbon_creator;
 
-    let arcs_res = svg.append("g")
-        .selectAll("g")
-        .data(chord.groups)
-        .join("g")
-        .call(g => g.append("path"))
+    let orbits_arcs = svg.append("g").attr("id", "orbit-arcs");
+
+    let my_selection = orbits_arcs.selectAll("g").data(chord.groups).join("g");
+
+    my_selection.append("g").attr("class", "pos-arcs").call(g => g.append("path"))
+    .attr("transform", `translate(${width/2}, ${height/2})`)
+    .select("path")
+        .attr("d", d => {
+            arc_creator = d3.arc().innerRadius(start_pos_arcs_radius).outerRadius(end_pos_arcs_radius);
+            return arc_creator(d);
+        })
+        .attr("fill", d => {
+            let res = structure_map.get(d.index);
+            if(state.selected_residues.has(res.POS)){
+                return COLOR_SELECT;
+            }else{
+                return scale_pos_color(res.POS);
+            }
+        });
+
+    my_selection.append("g").attr("class", "type-arcs").call(g => g.append("path"))
+    .attr("transform", `translate(${width/2}, ${height/2})`)
+    .select("path")
+        .attr("d", d => {
+            arc_creator = d3.arc().innerRadius(start_type_arcs_radius).outerRadius(end_type_arcs_radius);
+            return arc_creator(d);
+        })
+        .attr("fill", d => {
+            let res = structure_map.get(d.index);
+            if(state.selected_residues.has(res.POS)){
+                return COLOR_SELECT;
+            }else{
+                return scale_arcs_colors(res[color_var]);
+            }
+        });
+
+        my_selection.append("g").attr("class", "num-arcs").call(g => g.append("path"))
         .attr("transform", `translate(${width/2}, ${height/2})`)
         .select("path")
             .attr("d", d => {
                 let res = structure_map.get(d.index);
-                arc_creator = d3.arc().innerRadius(start_res_arcs).outerRadius(scale_arcs_radius(res.num_mods_total));
+                arc_creator = d3.arc().innerRadius(start_num_arcs_radius).outerRadius(scale_arcs_radius(res[num_var]));
                 return arc_creator(d);
             })
             .attr("fill", d => {
-                let res = structure_map.get(d.index);                
-                return scale_arcs_colors(res[color_var]);
+                let res = structure_map.get(d.index);
+                if(state.selected_residues.has(res.POS)){
+                    return COLOR_SELECT;
+                }else{
+                    return scale_arcs_colors(res[color_var]);
+                }                
             });
 
-    let arcs_nn = svg.append("g")
-        .selectAll("g")
-        .data(chord.groups)
-        .join("g")
-        .call(g => g.append("path"))
-        .attr("transform", `translate(${width/2}, ${height/2})`)
-        .select("path")
-            .attr("d", d => {
-                arc_creator = d3.arc().innerRadius(min_radius).outerRadius(start_res_arcs);
-                return arc_creator(d);
-            })
-            .attr("class", "unselected");
-
-
-    function update_active_ribbons(){
-        console.log(Array.from(state.selected_residues.values()));
-        let selected_residues = Array.from(state.selected_residues.values());
-        console.log(selected_residues);
-
-        let active_ribbons = chord.filter(d => {
-            let is_active = false;                        
-            for (let i = 0; i < selected_residues.length; i++) {
-                const element = selected_residues[i];
-                if(element.POS === d.source.index){
-                    is_active = true;
-                    break;
-                }                
-            }
-            return is_active;
-        });
-        console.log(active_ribbons);
-
-        svg.append("g")
-            .attr("class", "active-ribbons")
-            .selectAll("g")
-            .data(active_ribbons)
-            .join("path")
-                .attr("d", d => {
-                    ribbon_creator = d3.ribbon().radius(min_radius).padAngle(0);//1/min_radius);
-                    return ribbon_creator(d);
-                })
-                //.attr("fill", "blue")
-                .attr("stroke", "rgba(255,0,0)")
-                .attr("stroke-opacity", 1)
-                .attr("transform", `translate(${width/2}, ${height/2})`);
-        
-    }
-
-
-    arcs_nn.on("click", function(event, datum){
+    my_selection.on("click", function(event, datum){
         let element = d3.select(this);
         let residue = structure_map.get(datum.index);
 
         if(state.selected_residues.has(residue.POS)){
             state.selected_residues.delete(residue.POS);
-            element.attr("class", "unselected");
         }else{
             state.selected_residues.set(residue.POS, residue);
-            element.attr("class", "selected");
+            console.log(state.selected_residues);
         }
 
-        //update_active_ribbons();
-        render_main_pane_center();
+        primary_structure_orbit();
+        center_graph_view();
     });
 
-
-    arcs_nn.on("mouseover", function(event, datum){
+    my_selection.on("mouseover", function(event, datum){
         let element = d3.select(this);
+        let res = structure_map.get(datum.index);
 
-        d3.select(this).classed("hovered", true);
-        let chord_filtered = chord.filter(d => d.source.index === datum.index);        
+        element.classed("hovered", true);
+        d3.select("#tooltip").node().innerHTML = `
+                    <div id="tooltip-inner">
+                        <h3>${res.POS} - ${res.RES_name} (${res.RES})</h3>
+                        <p>Color (${color_var}): 
+                            <span style="display: inline-block; width: 0.8em; height: 0.8em; background: ${scale_arcs_colors(res[color_var])};"></span>
+                        </p>                        
+                        <p>Arc thickness (${num_var}): ${res[num_var]}</p>
+                    </div>                    
+        `;        
 
         svg.append("g")
-            .attr("class", "hover-ribbons")
+            .attr("id", "hovering-circle")
+            .append("circle")
+            .attr("cx", width/2)
+            .attr("cy", height/2)
+            .attr("r", min_radius)
+            .attr("fill", "gray")
+            .attr("fill-opacity", 0.5);    
+            
+        let chord_filtered = chord.filter(d => d.source.index === datum.index);
+
+        svg.append("g")
+            .attr("id", "hover-ribbons")
             .selectAll("g")
             .data(chord_filtered)
             .join("path")
                 .attr("d", d => {
-                    ribbon_creator = d3.ribbon().radius(min_radius).padAngle(0);//1/min_radius);
+                    ribbon_creator = d3.ribbon().radius(min_radius).padAngle(0);
                     return ribbon_creator(d);
                 })
-                //.attr("fill", "blue")
-                .attr("stroke", "rgba(255,0,0)")
+                .attr("stroke", COLOR_HOVER)
                 .attr("stroke-opacity", 1)
                 .attr("transform", `translate(${width/2}, ${height/2})`);
 
     });
 
-    arcs_nn.on("mouseout", function(event, datum){
+    my_selection.on("mouseout", function(event, datum){
         let element = d3.select(this);
+        element.classed("hovered", false);
 
-        d3.select(this).classed("hovered", false);
+        d3.select("#tooltip").node().innerHTML = "";
 
-        d3.selectAll(".hover-ribbons").remove();
+        svg.select("#hovering-circle").remove();            
+        svg.selectAll("#hover-ribbons").remove();
     });
 
 
 }
 
-function center_chord_view(){
-
-    // Raw data
-    const structure = state.structure;
-    const modifications = state.modifications;
-    const neighbors = state.neighbors;
-    const selected_residues = state.selected_residues;
-    
-}
-
-
 function center_graph_view(){
 
-    // Raw data
+    // Data
     const structure = state.structure;
     const modifications = state.modifications;
     const neighbors = state.neighbors;
     const selected_residues = state.selected_residues;
 
-    const container_node = document.getElementById("main-panel");
+    const structure_map = state.structure_map;
+    const modifications_map = state.modifications_map;
+    const neighbors_map = state.neighbors_map;
+
     const width = config.main_panel_width;
     const height = config.main_panel_height;
-    let svg;
-    if(d3.select(container_node).select("#center_graph_view").empty()){
-        svg = d3.select(container_node)
-            .append("svg")
-                .attr("id", "center_graph_view")
-                .attr("height", height)
-                .attr("width", width)
-                .style("style", "position: absolute; z-index: 2; top: 0; left: 0;");
-    }else{
-        svg = d3.select(container_node).select("#center_graph_view");
-        svg.selectAll("*").remove();
-    }
-    
+
+    let svg = d3.select("#svg-neighborhoods");
+    svg.selectAll("*").remove();
+
+    const color_var = state.color_var;    
 
     const min_radius = config.structure_vis.min_radius; // this defines the boundary of the force simulation
 
-    //svg.append("rect").attr("x", 0).attr("y", 0).attr("width", width).attr("height", height).attr("fill", "black");
-    //svg.append("circle").attr("cx", width/2).attr("cy", height/2).attr("r", min_radius - 10).attr("fill", "gray");
+    // Per -selected- node modifications histogram
+    let all_modifications_map = new Map();  // complete histogram of mods present in selected nodes
+    let selected_modifications_map = new Map();  // per node mod presence
 
-    // Preparing data for simulation
+    // - First we build the general histogram as all selected nodes should have all keys
+    Array.from(selected_residues.keys()).forEach(d => { // for each selected residue
+        let res_nns = neighbors_map.get(d);
+        res_nns.forEach(e => { // for each neighbor
+            if(modifications_map.has(e.POS)){  // Modification map has entries for the given residue
+                let mods = modifications_map.get(e.POS);
+                mods.forEach(f => {
+                    if(!all_modifications_map.has(f.MOD)){
+                        all_modifications_map.set(f.MOD, 1);
+                    }else{
+                        all_modifications_map.set(f.MOD, all_modifications_map.get(f.MOD) + 1);
+                    }
+                });            
+            }
+        });        
+    });
 
-    const nodes = Array.from(selected_residues.values());
+    // - Now we build the per node histogram
+    Array.from(selected_residues.keys()).forEach(d => { // for each selected residue
+        let res_nns = neighbors_map.get(d);
+        let sel_map = new Map();  // per residue histogram 
+        Array.from(all_modifications_map.keys()).forEach(f => sel_map.set(f, 0));    
+        res_nns.forEach(e => { // for each neighbor
+            if(modifications_map.has(e.POS)){  // Modification map has entries for the given residue
+                let mods = modifications_map.get(e.POS);  // total histogram                                
+                mods.forEach(f => sel_map.set(f.MOD, sel_map.get(f.MOD) + 1));                
+            }
+        });                
+        selected_modifications_map.set(d, sel_map);
+    });
 
+    console.log(all_modifications_map);
+    console.log(selected_modifications_map);
+
+    // Preparing data for simulation    
+
+    let primary_nodes = Array.from(selected_residues.values()).map(d => {return {id: d.POS, type: "primary"}});
+    primary_nodes.forEach(d => {
+        d.mods_hist = Array.from(selected_modifications_map.get(d.id).entries()).map(e => { return {MOD: e[0], value: e[1]}});
+    });
+
+    let links = [];
+    primary_nodes.forEach(d => {
+        let links_temp = neighbors_map.get(d.id);
+        links = links.concat(links_temp.map(e => {return {source: d.id, target: e.POS, value: e.value}}));
+    });
+    let secondary_nodes = new Map();
+    links.forEach(d => {
+        if(!secondary_nodes.has(d.target) && !selected_residues.has(d.target)){
+            secondary_nodes.set(d.target, {id: d.target, type: "secondary"});
+        }
+    });
+    secondary_nodes = Array.from(secondary_nodes.values());
+
+    const nodes = primary_nodes.concat(secondary_nodes);
+
+    // Scales for per-selected-node histogram
+    let scale_position_hist = d3.scaleBand().domain(Array.from(all_modifications_map.keys())).range([0, 2*Math.PI]);
+    let scale_color_hist = d3.scaleOrdinal().domain(Array.from(all_modifications_map.keys())).range(d3.schemeCategory10);
 
     // Visualization parameters
-    const radius = 10;
+    // - Main nodes and links
+    const primary_node_config = {}
+    primary_node_config.outer_radius = 20;
+    primary_node_config.inner_radius = 10;
+    primary_node_config.color_pathogenic = "#FF9AA2";
+    primary_node_config.color_normal = "#E2F0CB";
 
+    // - Secondary nodes and links
+    const secondary_node_config = {}
+    secondary_node_config.radius = 5;
+    secondary_node_config.color = "rgb(80,80,80)";
+    secondary_node_config.link_color = "rgb(130,130,130)";
+    secondary_node_config.stroke_color = "rgb(130,130,130)"
 
     // Force simulation
 
-    const force_simulation = d3.forceSimulation(nodes);
-    force_simulation
-        .force("charge", d3.forceManyBody())
-        .force("center", d3.forceCenter().strength(0.1))
-        .force("collide", d3.forceCollide(radius));
+    const force_link = d3.forceLink(links).id(d => d.id);
+    const force_simulation = d3.forceSimulation(nodes)
+        .force("center", d3.forceCenter().strength(1)) // ensures center of gravity is (0, 0)
+        .force("collide", d3.forceCollide(d => d.type === "primary" ? primary_node_config.outer_radius : secondary_node_config.radius)) // prevents collisions of points
+        .force("link", force_link)
+        .force("charge", d3.forceManyBody().strength(d => -40))
+        .force("position-x", d3.forceX())
+        .force("position-y", d3.forceY());
+        
 
     //force_simulation.stop();
 
-    const nodes_group = svg.append("g").attr("id", "nodes_group").attr("transform", `translate(${width/2}, ${height/2})`);
+    const link = svg.append("g")
+        .attr("id", "links_group")
+        .attr("transform", `translate(${width/2}, ${height/2})`)
+        .attr("stroke", secondary_node_config.link_color)
+        .attr("stroke-opacity", 1)
+        .attr("stroke-width", 1)
+            .selectAll("line")
+            .data(links)
+            .join("line");
 
-    nodes_group.selectAll("circle")
-        .data(nodes)
+    // Building primary nodes
+
+    const node_primary = svg.append("g")
+        .attr("id", "nodes_group_primary")
+        .attr("transform", `translate(${width/2}, ${height/2})`);
+
+    node_primary  
+        .selectAll(".outer-circle")
+        .data(nodes.filter(d => d.type === "primary"))
         .join("circle")
-            .attr("cx", d => d.x)
-            .attr("cy", d => d.y)
-            .attr("r", radius)
-            .attr("fill", "#03DAC5");
+        .attr("class", "outer-circle");
+
+    node_primary
+        .selectAll(".inner-circle")
+        .data(nodes.filter(d => d.type === "primary"))
+        .join("circle")
+        .attr("class", "inner-circle");
+
+    node_primary
+        .selectAll(".mods-hist")
+        .data(nodes.filter(d => d.type === "primary"))
+        .join("g")
+        //.append("g")        
+        .attr("class", "mods-hist")
+        .selectAll("circle")
+        .data(function(d, i){ return d.mods_hist;})
+        .join("circle");
+        //.append("circle")        
+
+    node_primary
+        .selectAll(".selection-circle")
+        .data(nodes.filter(d => d.type === "primary"))
+        .join("circle")
+        .attr("class", "selection-circle");
+
+    const node_secondary = svg.append("g")
+        .attr("id", "nodes_group_secondary")
+        .attr("transform", `translate(${width/2}, ${height/2})`)
+        .selectAll("circle")
+        .data(nodes.filter(d => d.type === "secondary"))
+        .join("circle");
 
     force_simulation.on("tick", function(){
         console.log("ticked");
-        d3.select("#nodes_group").selectAll("circle").data(nodes)
-        .join("circle")
-            .attr("cx", d => d.x)
-            .attr("cy", d => d.y)
-            .attr("r", 5)
-            .attr("fill", "#03DAC5");
+
+        d3.select("#links_group")
+            .selectAll("line")
+                .attr("x1", d => d.source.x)
+                .attr("y1", d => d.source.y)
+                .attr("x2", d => d.target.x)
+                .attr("y2", d => d.target.y);
+
+        // Update primary nodes
+
+        d3.select("#nodes_group_primary")
+            .selectAll(".outer-circle")
+                .attr("cx", d => d.x)
+                .attr("cy", d => d.y)
+                .attr("r", primary_node_config.outer_radius)
+                .attr("fill", "white")
+                .attr("stroke", "black");
+
+        d3.select("#nodes_group_primary")
+            .selectAll(".inner-circle")
+                .attr("cx", d => d.x)
+                .attr("cy", d => d.y)
+                .attr("r", primary_node_config.inner_radius)
+                .attr("fill", d => structure_map.get(d.id).num_mods_pathogenic > 0 ? primary_node_config.color_pathogenic : primary_node_config.color_normal)
+                .attr("stroke", "black")
+                .attr("stroke-width", d => 1);
+
+        d3.select("#nodes_group_primary")
+            .selectAll(".mods-hist")
+            .attr("transform", d => `translate(${d.x} ${d.y})`)
+            .selectAll("circle")
+            .attr("cx", d => scale_position_hist(d.MOD) ? Math.cos(scale_position_hist(d.MOD)) * 12 : 0)
+            .attr("cy", d => scale_position_hist(d.MOD) ? Math.sin(scale_position_hist(d.MOD)) * 12 : 0)
+            .attr("stroke", d => scale_color_hist(d.MOD))
+            .attr("fill", d => d.value > 0 ? scale_color_hist(d.MOD) : "white")
+            .attr("r", 5);        
+        //console.log(d3.select("#nodes_group_primary").selectAll(".mods_hist").selectAll("circle"));
+
+        d3.select("#nodes_group_primary")
+            .selectAll(".selection-circle")
+                .attr("cx", d => d.x)
+                .attr("cy", d => d.y)
+                .attr("r", primary_node_config.outer_radius)
+                .attr("fill-opacity", "0");
+
+        d3.selectAll("#selection-circle").on("click", function(event, datum){
+            const element = d3.select(this);
+            console.log(datum);
+            console.log(selected_modifications_map.get(datum.id));
+        });
+
+        // Update secondary nodes
+
+        d3.select("#nodes_group_secondary")
+            .selectAll("circle")
+                .attr("cx", d => d.x)
+                .attr("cy", d => d.y)
+                .attr("r", secondary_node_config.radius)
+                .attr("fill", secondary_node_config.color)
+                .attr("stroke", secondary_node_config.stroke_color);
+            
     });
 
 
@@ -620,7 +811,6 @@ function center_graph_view(){
  */
 
 function render_side_panel(){
-    console.log("[render_side_panel]");
 
     structure_3d_view();
     bulk_selection_view();
@@ -661,7 +851,6 @@ function structure_3d_view(){
     });
 
     const scene = new THREE.Scene();
-    console.log(scene);
     scene.background = new THREE.Color("#232323");
     let camera = new THREE.PerspectiveCamera(75, width/height, 0.1, 2000);
     const renderer = new THREE.WebGLRenderer({"canvas": canvas_node});
@@ -745,10 +934,15 @@ function structure_3d_view(){
 }
 
 function bulk_selection_view(){
+
+    const structure = state.structure;
+    let color_var = state.color_var;
+    let bars_data = Array.from(state.ordinal_var_maps[color_var].entries());
+    
     const width = config.side_panel_bottom_width;
     const height = config.side_panel_bottom_height;
 
-    const container = d3.select(document.getElementById("side-panel-bottom"));
+    const container = d3.select(document.getElementById("side-panel-bottom-vis"));
     let svg;
     if(container.select("#view-bulk-select-svg").empty()){
         svg = container.append("svg").attr("id", "view-bulk-select-svg");
@@ -758,19 +952,36 @@ function bulk_selection_view(){
     }
     svg.attr("width", width).attr("height", height);
 
-    let var_color = state.color_var;
+    let bars_margin = {top: 10, right: 10, bottom: 40 , left: 0};
+    let bars_height = height - bars_margin.top - bars_margin.bottom;    
     
+    // Scales and axis
+    let scale_position = d3.scaleBand().domain(bars_data.map(d => d[0])).range([0, bars_height]);    
+    let scale_color = config.scale_color;//.domain(bars_data.map(d => d[0]));    
 
-    console.log(`Var: ${state.color_var}`);
-    console.log(state.ordinal_var_maps[state.color_var]);
+    let axis_left = svg.append("g")
+        .attr("id", "bulk-select-axis")       
+        .call(d3.axisLeft(scale_position))
+        .attr("color", "white");        
 
-    let bars_data = Array.from(state.ordinal_var_maps[state.color_var].entries());
-    let scale_position = d3.scaleBand().domain(bars_data.map(d => d[0])).range([0, height]);
-    let scale_size = d3.scaleLinear().domain([0, d3.max(bars_data, d => d[1].num)]).range([0, width]);
-    let scale_color = config.scale_color;//.domain(bars_data.map(d => d[0]));
+    bars_margin.left = d3.select("#bulk-select-axis g").node().getBBox().width + 20;
+    let bars_width = width - bars_margin.left - bars_margin.right;    
+    axis_left.attr("transform", `translate(${bars_margin.left} ${bars_margin.top})`);
 
-    console.log(scale_color);
-    let bars_group = svg.append("g").attr("id", "bulk-select-bars");
+    let scale_size = d3.scaleLinear().domain([0, d3.max(bars_data, d => d[1].num)]).range([0, bars_width]);
+
+    let axis_bottom = svg.append("g")
+        .attr("id", "bulk-select-axis")       
+        .call(d3.axisBottom(scale_size))
+        .attr("color", "white");     
+
+    axis_bottom.attr("transform", `translate(${bars_margin.left} ${bars_margin.top + bars_height})`);
+    
+    
+    let bars_group = svg.append("g")
+        .attr("id", "bulk-select-bars")
+        .attr("transform", `translate(${bars_margin.left} ${bars_margin.top})`);
+
     let bars = bars_group.selectAll("rect")
         .data(bars_data)
         .join("rect")
@@ -778,7 +989,7 @@ function bulk_selection_view(){
             .attr("y", d => scale_position(d[0]))
             .attr("width", d => scale_size(d[1].num))
             .attr("height", scale_position.bandwidth())
-            .attr("fill", d => scale_color(d[0]));
+            .attr("fill", d => scale_color(d[0]));    
 
     bars.on("mouseover", function(event, datum){
         let element = d3.select(this);
@@ -788,6 +999,18 @@ function bulk_selection_view(){
     bars.on("mouseout", function(event, datum){
         let element = d3.select(this);
         element.classed("hovered", false);
+    });
+
+    bars.on("click", function(event, datum){
+        let element = d3.select(this);
+        element.classed("selected", true);
+        structure.forEach(d => {
+            if(d[color_var] === datum[0] && !state.selected_residues.has(d.POS)){
+                state.selected_residues.set(d.POS, d);
+            }
+        });
+        console.log(state.selected_residues);
+        render_app();
     });
 }
 
