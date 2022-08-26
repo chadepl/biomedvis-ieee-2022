@@ -120,7 +120,7 @@ h3 {
     z-index: 0;
 }
 
-#tooltip {
+.tooltip {
     float: right;
     width: 160;
     height: 120px;
@@ -131,12 +131,12 @@ h3 {
     color: var(--font-color-on-surface);
 }
 
-#tooltip-inner {
+#tooltip-pso #tooltip-inner {
     margin-left: 10%;
     width: 80%;
 }
 
-#tooltip-inner p {
+#tooltip-pso #tooltip-inner p {
     font-size: 0.8em;
 }
 

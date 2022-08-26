@@ -195,7 +195,6 @@ function update_config(){
     config.side_panel_bottom_height = document.getElementById("side-panel-bottom-vis").offsetHeight;
 
     config.inspection_mode = document.getElementById("inspection-mode-select").value;
-    config.main_panel_center_widget = document.getElementById("center-view-widget-select").value;
 
     config.neighborhood_restriction_type = document.getElementById("select-neighborhood-type").value;
     config.neighborhood_restriction_value = +document.getElementById("restriction-input").value;
@@ -221,14 +220,6 @@ function configure_options(){
     document.getElementById("inspection-mode-select").replaceWith(select_inspection_mode); // remove event listeners
     select_inspection_mode.addEventListener("change", function(){
         config.inspection_mode = select_inspection_mode.value;
-        update_config();
-        render_app();
-    });
-
-    const select_center_view = document.getElementById("center-view-widget-select").cloneNode(true);
-    document.getElementById("center-view-widget-select").replaceWith(select_center_view); // remove event listeners
-    select_center_view.addEventListener("change", function(){
-        config.main_panel_center_widget = select_center_view.value;
         update_config();
         render_app();
     });
@@ -504,7 +495,7 @@ function primary_structure_orbit(){
 
     my_selection.on("click", function(event, datum){
         let element = d3.select(this);
-        let residue = structure_map.get(datum.index);
+        let residue = structure_map.get(datum.index);        
 
         if(state.selected_residues.has(residue.POS)){
             state.selected_residues.delete(residue.POS);
@@ -521,8 +512,17 @@ function primary_structure_orbit(){
         let element = d3.select(this);
         let res = structure_map.get(datum.index);
 
+        let chord_filtered = chord.filter(d => d.source.index === datum.index);        
+
+        console.log(datum.index);
+        console.log(structure_map.get(datum.index));
+        console.log(neighbors_map.get(datum.index));
+        console.log(graph[datum.index]);
+        console.log(chord);
+        console.log(chord_filtered);
+
         element.classed("hovered", true);
-        d3.select("#tooltip").node().innerHTML = `
+        d3.select("#tooltip-pso").node().innerHTML = `
                     <div id="tooltip-inner">
                         <h3>${res.POS} - ${res.RES_name} (${res.RES})</h3>
                         <p>Color (${color_var}): 
@@ -539,9 +539,7 @@ function primary_structure_orbit(){
             .attr("cy", height/2)
             .attr("r", min_radius)
             .attr("fill", "gray")
-            .attr("fill-opacity", 0.5);    
-            
-        let chord_filtered = chord.filter(d => d.source.index === datum.index);
+            .attr("fill-opacity", 0.5);            
 
         svg.append("g")
             .attr("id", "hover-ribbons")
@@ -562,7 +560,7 @@ function primary_structure_orbit(){
         let element = d3.select(this);
         element.classed("hovered", false);
 
-        d3.select("#tooltip").node().innerHTML = "";
+        d3.select("#tooltip-pso").node().innerHTML = "";
 
         svg.select("#hovering-circle").remove();            
         svg.selectAll("#hover-ribbons").remove();
@@ -589,15 +587,19 @@ function center_graph_view(){
     let svg = d3.select("#svg-neighborhoods");
     svg.selectAll("*").remove();
 
-    const color_var = state.color_var;    
+    // State vars
+    const color_var = state.color_var;  
 
+    // Config vars
     const min_radius = config.structure_vis.min_radius; // this defines the boundary of the force simulation
 
-    // Per -selected- node modifications histogram
+    // Preparing data
+
+    // - Per -selected- node modifications histogram
     let all_modifications_map = new Map();  // complete histogram of mods present in selected nodes
     let selected_modifications_map = new Map();  // per node mod presence
 
-    // - First we build the general histogram as all selected nodes should have all keys
+    // -- First we build the general histogram as all selected nodes should have all keys
     Array.from(selected_residues.keys()).forEach(d => { // for each selected residue
         let res_nns = neighbors_map.get(d);
         res_nns.forEach(e => { // for each neighbor
@@ -614,7 +616,7 @@ function center_graph_view(){
         });        
     });
 
-    // - Now we build the per node histogram
+    // -- Now we build the per node histogram
     Array.from(selected_residues.keys()).forEach(d => { // for each selected residue
         let res_nns = neighbors_map.get(d);
         let sel_map = new Map();  // per residue histogram 
@@ -631,7 +633,9 @@ function center_graph_view(){
     console.log(all_modifications_map);
     console.log(selected_modifications_map);
 
-    // Preparing data for simulation    
+    // Preparing data for simulation 
+
+    // -- Nodes (selected ones + those in their neighborhood)
 
     let primary_nodes = Array.from(selected_residues.values()).map(d => {return {id: d.POS, type: "primary"}});
     primary_nodes.forEach(d => {
@@ -684,6 +688,9 @@ function center_graph_view(){
         .force("position-y", d3.forceY());
         
 
+    // setTimeout(function(){
+    //     force_simulation.stop();
+    // }, 1000);
     //force_simulation.stop();
 
     const link = svg.append("g")
@@ -720,10 +727,10 @@ function center_graph_view(){
         .join("g")
         //.append("g")        
         .attr("class", "mods-hist")
-        .selectAll("circle")
+        .selectAll("path")
         .data(function(d, i){ return d.mods_hist;})
-        .join("circle");
-        //.append("circle")        
+        .join("path");
+        //.append("circle")       
 
     node_primary
         .selectAll(".selection-circle")
@@ -767,16 +774,26 @@ function center_graph_view(){
                 .attr("stroke", "black")
                 .attr("stroke-width", d => 1);
 
+        let arc_creator = d3.arc();
         d3.select("#nodes_group_primary")
             .selectAll(".mods-hist")
             .attr("transform", d => `translate(${d.x} ${d.y})`)
-            .selectAll("circle")
-            .attr("cx", d => scale_position_hist(d.MOD) ? Math.cos(scale_position_hist(d.MOD)) * 12 : 0)
-            .attr("cy", d => scale_position_hist(d.MOD) ? Math.sin(scale_position_hist(d.MOD)) * 12 : 0)
-            .attr("stroke", d => scale_color_hist(d.MOD))
-            .attr("fill", d => d.value > 0 ? scale_color_hist(d.MOD) : "white")
-            .attr("r", 5);        
-        //console.log(d3.select("#nodes_group_primary").selectAll(".mods_hist").selectAll("circle"));
+            .selectAll("path")
+            .attr("d", d => {
+                let arc_params = {
+                    innerRadius: primary_node_config.inner_radius,
+                    outerRadius: primary_node_config.outer_radius,
+                    startAngle: scale_position_hist(d.MOD),
+                    endAngle: scale_position_hist(d.MOD) + scale_position_hist.bandwidth()
+                }
+                //arc_creator = d3.arc();
+
+                return arc_creator(arc_params);
+            })
+            .attr("fill", d => {
+                return d.value > 0 ? scale_color_hist(d.MOD) : "white"; 
+            })
+            .attr("stroke", "black");
 
         d3.select("#nodes_group_primary")
             .selectAll(".selection-circle")
@@ -801,8 +818,7 @@ function center_graph_view(){
                 .attr("fill", secondary_node_config.color)
                 .attr("stroke", secondary_node_config.stroke_color);
             
-    });
-
+    });    
 
 }
 
