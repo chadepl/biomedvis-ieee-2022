@@ -122,8 +122,6 @@ h3 {
 
 .tooltip {
     float: right;
-    width: 160;
-    height: 120px;
     margin-right: 10px;
     margin-top: 10px;
     background: var(--surface-color-2);
@@ -131,14 +129,25 @@ h3 {
     color: var(--font-color-on-surface);
 }
 
-#tooltip-pso #tooltip-inner {
+.tooltip #tooltip-pso {
+    height: 120px;
+    width: 160;
+}
+
+.tooltip #tooltip-nfl {
+    height: 120px;
+    width: 200;
+}
+
+#tooltip-inner {
     margin-left: 10%;
     width: 80%;
 }
 
-#tooltip-pso #tooltip-inner p {
+#tooltip-inner p {
     font-size: 0.8em;
 }
+
 
 
 #side-panel {

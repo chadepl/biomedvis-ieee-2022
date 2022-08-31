@@ -91,6 +91,8 @@ function update_state(prot_uniacc){
         return out;
     });
 
+    state.num_residues = state.structure.length;
+
     state.selected_residues = new Map();
 
     state.available_color_vars = ["RES", "secondary_structure", "has_pathogenic"];
@@ -158,13 +160,13 @@ function update_data_maps(){
     
     state.neighbors_map = new Map(); // pos -> neighbors pos
     Array.from(state.structure_map.keys()).forEach(k => state.neighbors_map.set(k, []));
-    state.neighbors.forEach(d => state.neighbors_map.get(d.POS_x).push({POS: d.POS_y, value: d.distance_ca}));
+    state.neighbors.forEach(d => state.neighbors_map.get(d.POS_x).push({POS: d.POS_y, value: d.distance_ca}));    
 
     Array.from(state.neighbors_map.keys()).forEach(k => {
         let arr = state.neighbors_map.get(k);
-        arr.sort((a, b) => d3.ascending(a.value, b.value));
+        arr.sort((a, b) => d3.ascending(a.value, b.value));        
         if(config.neighborhood_restriction_type === "knn"){
-            state.neighbors_map.set(k, arr.slice(1, config.neighborhood_restriction_value));
+            state.neighbors_map.set(k, arr.slice(0, config.neighborhood_restriction_value));
         }else if(config.neighborhood_restriction_type === "radius"){
             arr = arr.filter(d => d.value <= config.neighborhood_restriction_value);
             state.neighbors_map.set(k, arr);
@@ -200,8 +202,8 @@ function update_config(){
     config.neighborhood_restriction_value = +document.getElementById("restriction-input").value;
     
     config.structure_vis = {};
-    config.structure_vis.min_radius = 0.8 * config.main_panel_square_size/2;
-    config.structure_vis.max_radius = 1 * config.main_panel_square_size/2;
+    config.structure_vis.min_radius = 0.8 * config.main_panel_square_size/2; // 0.4
+    config.structure_vis.max_radius = 1 * config.main_panel_square_size/2; //0.6 
 
     // Scales domains
     config.scale_color = d3.scaleOrdinal().domain(Array.from(state.ordinal_var_maps[state.color_var].keys()));
@@ -506,6 +508,19 @@ function primary_structure_orbit(){
 
         primary_structure_orbit();
         center_graph_view();
+
+        let res = structure_map.get(datum.index);
+        d3.select("#tooltip-pso").node().innerHTML = `
+        <div id="tooltip-inner">
+            <h3>${res.POS} - ${res.RES_name} (${res.RES})</h3>
+            <p>Color (${color_var}): 
+                <span style="display: inline-block; width: 0.8em; height: 0.8em; background: ${scale_arcs_colors(res[color_var])};"></span>
+            </p>                        
+            <p>Arc thickness (${num_var}): ${res[num_var]}</p>
+        </div>                    
+`;     
+
+
     });
 
     my_selection.on("mouseover", function(event, datum){
@@ -514,23 +529,15 @@ function primary_structure_orbit(){
 
         let chord_filtered = chord.filter(d => d.source.index === datum.index);        
 
-        console.log(datum.index);
-        console.log(structure_map.get(datum.index));
-        console.log(neighbors_map.get(datum.index));
-        console.log(graph[datum.index]);
-        console.log(chord);
-        console.log(chord_filtered);
-
-        element.classed("hovered", true);
-        d3.select("#tooltip-pso").node().innerHTML = `
-                    <div id="tooltip-inner">
-                        <h3>${res.POS} - ${res.RES_name} (${res.RES})</h3>
-                        <p>Color (${color_var}): 
-                            <span style="display: inline-block; width: 0.8em; height: 0.8em; background: ${scale_arcs_colors(res[color_var])};"></span>
-                        </p>                        
-                        <p>Arc thickness (${num_var}): ${res[num_var]}</p>
-                    </div>                    
-        `;        
+        element.classed("hovered", true);   
+        // d3.select("#tooltip-pso").node().innerHTML = `
+        // <div id="tooltip-inner">
+        //     <h3>${res.POS} - ${res.RES_name} (${res.RES})</h3>
+        //     <p>Color (${color_var}): 
+        //         <span style="display: inline-block; width: 0.8em; height: 0.8em; background: ${scale_arcs_colors(res[color_var])};"></span>
+        //     </p>                        
+        //     <p>Arc thickness (${num_var}): ${res[num_var]}</p>
+        // </div> 
 
         svg.append("g")
             .attr("id", "hovering-circle")
@@ -560,7 +567,7 @@ function primary_structure_orbit(){
         let element = d3.select(this);
         element.classed("hovered", false);
 
-        d3.select("#tooltip-pso").node().innerHTML = "";
+        //d3.select("#tooltip-pso").node().innerHTML = "";
 
         svg.select("#hovering-circle").remove();            
         svg.selectAll("#hover-ribbons").remove();
@@ -602,10 +609,10 @@ function center_graph_view(){
     // -- First we build the general histogram as all selected nodes should have all keys
     Array.from(selected_residues.keys()).forEach(d => { // for each selected residue
         let res_nns = neighbors_map.get(d);
-        res_nns.forEach(e => { // for each neighbor
-            if(modifications_map.has(e.POS)){  // Modification map has entries for the given residue
+        res_nns.forEach(e => { // for each neighbor            
+            if(modifications_map.has(e.POS)){  // Modification map has entries for the given residue                
                 let mods = modifications_map.get(e.POS);
-                mods.forEach(f => {
+                mods.forEach(f => {                    
                     if(!all_modifications_map.has(f.MOD)){
                         all_modifications_map.set(f.MOD, 1);
                     }else{
@@ -617,14 +624,22 @@ function center_graph_view(){
     });
 
     // -- Now we build the per node histogram
+    //    In addition to the counts of each mod it also says if a mod type is pathogenic 
     Array.from(selected_residues.keys()).forEach(d => { // for each selected residue
         let res_nns = neighbors_map.get(d);
         let sel_map = new Map();  // per residue histogram 
-        Array.from(all_modifications_map.keys()).forEach(f => sel_map.set(f, 0));    
+        Array.from(all_modifications_map.keys()).forEach(f => sel_map.set(f, {count: 0, pathogenic: false})); // initialize bins per mod    
         res_nns.forEach(e => { // for each neighbor
-            if(modifications_map.has(e.POS)){  // Modification map has entries for the given residue
-                let mods = modifications_map.get(e.POS);  // total histogram                                
-                mods.forEach(f => sel_map.set(f.MOD, sel_map.get(f.MOD) + 1));                
+            if(modifications_map.has(e.POS)){  // Modification map has entries for the given residue                
+                let mods = modifications_map.get(e.POS);  // total histogram   
+                mods.forEach(f => {
+                    let mod_bin = sel_map.get(f.MOD);
+                    mod_bin.count = mod_bin.count + 1;
+                    if(f.PathogenicMutation){
+                        mod_bin.pathogenic = true;
+                    }
+                    sel_map.set(f.MOD, mod_bin);
+                });                
             }
         });                
         selected_modifications_map.set(d, sel_map);
@@ -634,64 +649,139 @@ function center_graph_view(){
     console.log(selected_modifications_map);
 
     // Preparing data for simulation 
+    let nodes_map = new Map();
+    let links_map = new Map();
+    Array.from(selected_residues.keys()).forEach(k => {
 
-    // -- Nodes (selected ones + those in their neighborhood)
-
-    let primary_nodes = Array.from(selected_residues.values()).map(d => {return {id: d.POS, type: "primary"}});
-    primary_nodes.forEach(d => {
-        d.mods_hist = Array.from(selected_modifications_map.get(d.id).entries()).map(e => { return {MOD: e[0], value: e[1]}});
-    });
-
-    let links = [];
-    primary_nodes.forEach(d => {
-        let links_temp = neighbors_map.get(d.id);
-        links = links.concat(links_temp.map(e => {return {source: d.id, target: e.POS, value: e.value}}));
-    });
-    let secondary_nodes = new Map();
-    links.forEach(d => {
-        if(!secondary_nodes.has(d.target) && !selected_residues.has(d.target)){
-            secondary_nodes.set(d.target, {id: d.target, type: "secondary"});
+        // primary node
+        let pr_data = structure_map.get(k);
+        if(!nodes_map.has(pr_data.POS)){
+            let pn_data = {};
+            pn_data.id = pr_data.POS;
+            pn_data[state.color_var] = pr_data[state.color_var];
+            pn_data[state.num_var] = pr_data[state.num_var];
+            pn_data.quality = pr_data.quality;
+            pn_data.has_pathogenic = pr_data.has_pathogenic;
+            pn_data.node_type = "primary"
+            pn_data.mods_hist = Array.from(selected_modifications_map.get(pr_data.POS).entries()).map(e => { return {MOD: e[0], value: e[1].count, is_pathogenic: e[1].pathogenic}});
+            pn_data.node_is_pathogenic = false;
+            if(modifications_map.has(pn_data.id)  && modifications_map.get(pn_data.id).length > 0){
+                if(modifications_map.get(pn_data.id).length === 1){
+                    pn_data.node_is_pathogenic = modifications_map.get(pn_data.id).PathogenicMutation;
+                }else{
+                    pn_data.node_is_pathogenic = modifications_map.get(pn_data.id).reduce((a, b) => a.PathogenicMutation || b.PathogenicMutation);
+                }                
+            }
+            pn_data.neighborhood_is_pathogenic = false;
+            if(pn_data.mods_hist.length > 0){
+                pn_data.neighborhood_is_pathogenic = pn_data.mods_hist.reduce((a, b) => a.is_pathogenic || b.is_pathogenic);
+            }                  
+            nodes_map.set(pr_data.POS, pn_data);
         }
-    });
-    secondary_nodes = Array.from(secondary_nodes.values());
 
-    const nodes = primary_nodes.concat(secondary_nodes);
+        // secondary
+        neighbors_map.get(k).forEach(n => {
+            let sr_data = structure_map.get(n.POS);
 
-    // Scales for per-selected-node histogram
-    let scale_position_hist = d3.scaleBand().domain(Array.from(all_modifications_map.keys())).range([0, 2*Math.PI]);
-    let scale_color_hist = d3.scaleOrdinal().domain(Array.from(all_modifications_map.keys())).range(d3.schemeCategory10);
+            // secondary nodes
+            if(!nodes_map.has(sr_data.POS) && !selected_residues.has(sr_data.POS)){
+                let sn_data = {};
+                sn_data.id = sr_data.POS;
+                sn_data[state.color_var] = sr_data[state.color_var];
+                sn_data[state.num_var] = sr_data[state.num_var];
+                sn_data.quality = sr_data.quality;
+                sn_data.has_pathogenic = sr_data.has_pathogenic;
+                sn_data.node_type = "secondary"
+                sn_data.mods_hist = undefined;
+                sn_data.node_is_pathogenic = false;
+                if(modifications_map.has(sn_data.id) && modifications_map.get(sn_data.id).length > 0){
+                    if(modifications_map.get(sn_data.id).length === 1){
+                        sn_data.node_is_pathogenic = modifications_map.get(sn_data.id)[0].PathogenicMutation;
+                    }else{
+                        sn_data.node_is_pathogenic = modifications_map.get(sn_data.id).reduce((a, b) => a.PathogenicMutation || b.PathogenicMutation);
+                    }
+                }
+                nodes_map.set(sr_data.POS, sn_data);
+            }
 
-    // Visualization parameters
-    // - Main nodes and links
+            // secondary links
+            let link_id_1 = state.num_residues * pr_data.POS  + sr_data.POS;
+            let link_id_2 = state.num_residues * sr_data.POS  + pr_data.POS; // we assume symmetric graph
+
+            if(link_id_1 !== link_id_2 && (!links_map.has(link_id_1) && !links_map.has(link_id_2))){
+                let link_data = {};
+                link_data.source = pr_data.POS;
+                link_data.target = sr_data.POS;
+                link_data.dist = n.value;
+                link_data.value = 1 / link_data.dist;  // larger distances should result in smaller forces
+                if(selected_residues.has() && selected_residues.has()){
+                    link_data.link_type = "primary";                    
+                } else {
+                    link_data.link_type = "secondary";
+                }
+
+                links_map.set(link_id_1, link_data);
+            }
+        });
+
+    });    
+
+    const nodes = Array.from(nodes_map.values());
+    const links = Array.from(links_map.values());
+
+    console.log(nodes);
+    console.log(links);
+
+    // Visualization parameters    
+    const color_pathogenic_node = "#b60a1c";
+    const color_pathogenic_neighborhood = "#e39802";
+    const color_normal_node = "#309143";
+
+    const color_light_pathogenic_node = "#ff684c";
+    const color_light_pathogenic_neighborhood = "#ffda66";
+    const color_light_normal_node = "#8ace7e";
+
+    // - Appearance main nodes and links
     const primary_node_config = {}
     primary_node_config.outer_radius = 20;
     primary_node_config.inner_radius = 10;
-    primary_node_config.color_pathogenic = "#FF9AA2";
-    primary_node_config.color_normal = "#E2F0CB";
+    primary_node_config.outer_radius_quality_arc = 10;
+    primary_node_config.inner_radius_quality_arc = 5;
 
-    // - Secondary nodes and links
+    // - Appearance secondary nodes and links
     const secondary_node_config = {}
     secondary_node_config.radius = 5;
     secondary_node_config.color = "rgb(80,80,80)";
     secondary_node_config.link_color = "rgb(130,130,130)";
     secondary_node_config.stroke_color = "rgb(130,130,130)"
 
+    // - Scales for per-selected-node histogram
+    let scale_position_hist = d3.scaleBand().domain(Array.from(all_modifications_map.keys())).range([0, 2*Math.PI]);
+    let scale_color_hist = d3.scaleOrdinal().domain(Array.from(all_modifications_map.keys())).range(d3.schemeCategory10);
+    let scale_radius_quality_arc = d3.scaleLinear().domain([d3.max(nodes, d => d.quality), d3.min(nodes, d => d.quality)]).range([primary_node_config.outer_radius_quality_arc, primary_node_config.inner_radius_quality_arc]);
+    let scales_arcs_thickness = {};
+    Array.from(all_modifications_map.entries()).forEach(e => {
+        scales_arcs_thickness[e[0]] = d3.scaleLinear().domain([0, e[1]]).range([primary_node_config.inner_radius, primary_node_config.outer_radius]);
+    });
+
     // Force simulation
 
-    const force_link = d3.forceLink(links).id(d => d.id);
+    const force_link = d3.forceLink(links).distance(d => d.dist * 2).id(d => d.id);
     const force_simulation = d3.forceSimulation(nodes)
-        .force("center", d3.forceCenter().strength(1)) // ensures center of gravity is (0, 0)
-        .force("collide", d3.forceCollide(d => d.type === "primary" ? primary_node_config.outer_radius : secondary_node_config.radius)) // prevents collisions of points
+        //.force("center", d3.forceCenter().strength(1)) // ensures center of gravity is (0, 0)
+        .force("collide", d3.forceCollide(d => d.node_type === "primary" ? primary_node_config.outer_radius : secondary_node_config.radius)) // prevents collisions of points
         .force("link", force_link)
-        .force("charge", d3.forceManyBody().strength(d => -40))
-        .force("position-x", d3.forceX())
-        .force("position-y", d3.forceY());
+        .force("charge", d3.forceManyBody().strength(d => d.node_type === "primary" ? -80 : -80))
+        .force("position-x", d3.forceX())//.x(d => 0).strength(0.1))
+        .force("position-y", d3.forceY())//.y(0).strength(0.3));
         
 
     // setTimeout(function(){
     //     force_simulation.stop();
     // }, 1000);
     //force_simulation.stop();
+
+    // Building links
 
     const link = svg.append("g")
         .attr("id", "links_group")
@@ -703,48 +793,94 @@ function center_graph_view(){
             .data(links)
             .join("line");
 
-    // Building primary nodes
+    // Building nodes
 
-    const node_primary = svg.append("g")
+    // - primary nodes
+
+    const node_primary_group = svg.append("g")
         .attr("id", "nodes_group_primary")
         .attr("transform", `translate(${width/2}, ${height/2})`);
 
-    node_primary  
-        .selectAll(".outer-circle")
-        .data(nodes.filter(d => d.type === "primary"))
-        .join("circle")
-        .attr("class", "outer-circle");
-
-    node_primary
-        .selectAll(".inner-circle")
-        .data(nodes.filter(d => d.type === "primary"))
-        .join("circle")
-        .attr("class", "inner-circle");
-
-    node_primary
-        .selectAll(".mods-hist")
-        .data(nodes.filter(d => d.type === "primary"))
+    const node_primary_selection = node_primary_group
+        .selectAll(".nsg-group")
+        .data(nodes.filter(d => d.node_type === "primary"))
         .join("g")
-        //.append("g")        
-        .attr("class", "mods-hist")
-        .selectAll("path")
-        .data(function(d, i){ return d.mods_hist;})
-        .join("path");
-        //.append("circle")       
+        .attr("class", "nsg-group")  
+        .call(g => {
+            return g.append("circle").attr("class",  "outer-circle");                
+        })      
+        .call(g => {
+            return g.append("circle").attr("class",  "inner-circle");                
+        })
+        .call(g => {
+            return g.append("path").attr("class", "quality-arc");
+        })        
+        .call(g => {
+            return g.append("g")
+                .attr("class", "mods-hist")
+                .selectAll("path")
+                    .data(function(d, i){ return d.mods_hist;})
+                    .join("path");
+        })
+        .call(g => {
+            return g.append("g")
+                .attr("class", "mods-hist-borders")
+                .selectAll("path")
+                    .data(function(d, i){ return d.mods_hist;})
+                    .join("path");
+        })
+        .call(g => {
+            return g.append("circle").attr("class",  "pathogenic-ring");                
+        });
 
-    node_primary
-        .selectAll(".selection-circle")
-        .data(nodes.filter(d => d.type === "primary"))
-        .join("circle")
-        .attr("class", "selection-circle");
+    // - secondary nodes
 
     const node_secondary = svg.append("g")
         .attr("id", "nodes_group_secondary")
         .attr("transform", `translate(${width/2}, ${height/2})`)
         .selectAll("circle")
-        .data(nodes.filter(d => d.type === "secondary"))
+        .data(nodes.filter(d => d.node_type === "secondary"))
         .join("circle");
 
+    // Interaction
+
+    node_primary_selection.on("click", function(event, datum){
+        const element = d3.select(this);
+        console.log(element);
+        console.log(datum);
+        console.log(selected_modifications_map.get(datum.id));
+        element
+            //.attr("transform", `translate(${-datum.x} ${-datum.y})`)
+            .attr("transform", "scale(3)")
+            //.attr("transform", `translate(${datum.x} ${datum.y})`);
+
+        console.log(all_modifications_map);
+        console.log(selected_modifications_map);
+    });
+
+    node_primary_selection.on("mouseover", function(event, datum){
+        let element = d3.select(this);
+        let res = structure_map.get(datum.id);
+
+        element.classed("hovered", true);
+        d3.select("#tooltip-nfl").node().innerHTML = `
+                    <div id="tooltip-inner">
+                        <h3>${res.POS} - ${res.RES_name} (${res.RES})</h3>                                                                        
+                    </div>                    
+        `;        
+    });
+
+    node_primary_selection.on("mouseout", function(event, datum){
+        let element = d3.select(this);
+        element.classed("hovered", false);
+
+        d3.select("#tooltip-nfl").node().innerHTML = "";
+
+    });
+
+
+    // tick
+    let arc_creator = d3.arc();
     force_simulation.on("tick", function(){
         console.log("ticked");
 
@@ -757,26 +893,63 @@ function center_graph_view(){
 
         // Update primary nodes
 
+
         d3.select("#nodes_group_primary")
-            .selectAll(".outer-circle")
+            .selectAll(".outer-circle")                
                 .attr("cx", d => d.x)
                 .attr("cy", d => d.y)
                 .attr("r", primary_node_config.outer_radius)
                 .attr("fill", "white")
-                .attr("stroke", "black");
+                .attr("stroke", "black")
+                .attr("stroke-width", d => 1);
 
         d3.select("#nodes_group_primary")
             .selectAll(".inner-circle")
                 .attr("cx", d => d.x)
                 .attr("cy", d => d.y)
                 .attr("r", primary_node_config.inner_radius)
-                .attr("fill", d => structure_map.get(d.id).num_mods_pathogenic > 0 ? primary_node_config.color_pathogenic : primary_node_config.color_normal)
+                .attr("fill", d => d.neighborhood_is_pathogenic ? color_pathogenic_neighborhood : color_normal_node)
                 .attr("stroke", "black")
                 .attr("stroke-width", d => 1);
 
-        let arc_creator = d3.arc();
+        d3.select("#nodes_group_primary")
+            .selectAll(".quality-arc")
+                .attr("transform", d => `translate(${d.x} ${d.y})`)
+                .attr("d", d => {
+                    let arc_params = {
+                        innerRadius: scale_radius_quality_arc(d.quality),
+                        outerRadius: primary_node_config.outer_radius_quality_arc,
+                        startAngle: 0,
+                        endAngle: 2 * Math.PI
+                    };
+
+                    return arc_creator(arc_params);
+                })
+                .attr("fill", "black");
+                //.attr("stroke", "black")
+                //.attr("stroke-width", d => 1);
+        
         d3.select("#nodes_group_primary")
             .selectAll(".mods-hist")
+            .attr("transform", d => `translate(${d.x} ${d.y})`)
+            .selectAll("path")
+            .attr("d", d => {
+                let arc_params = {
+                    innerRadius: primary_node_config.inner_radius,
+                    outerRadius: scales_arcs_thickness[d.MOD] === undefined ? primary_node_config.outer_radius : scales_arcs_thickness[d.MOD](d.value),
+                    startAngle: scale_position_hist(d.MOD),
+                    endAngle: scale_position_hist(d.MOD) + scale_position_hist.bandwidth()
+                }
+
+                return arc_creator(arc_params);
+            })
+            .attr("fill", d => {
+                return d.value > 0 ? scale_color_hist(d.MOD) : "white"; 
+            })
+            .attr("stroke", "none");            
+
+        d3.select("#nodes_group_primary")
+            .selectAll(".mods-hist-borders")
             .attr("transform", d => `translate(${d.x} ${d.y})`)
             .selectAll("path")
             .attr("d", d => {
@@ -786,27 +959,20 @@ function center_graph_view(){
                     startAngle: scale_position_hist(d.MOD),
                     endAngle: scale_position_hist(d.MOD) + scale_position_hist.bandwidth()
                 }
-                //arc_creator = d3.arc();
 
                 return arc_creator(arc_params);
             })
-            .attr("fill", d => {
-                return d.value > 0 ? scale_color_hist(d.MOD) : "white"; 
-            })
-            .attr("stroke", "black");
+            .attr("fill", "none")
+            .attr("stroke", d => d.is_pathogenic ? color_pathogenic_node : "black");
 
         d3.select("#nodes_group_primary")
-            .selectAll(".selection-circle")
+            .selectAll(".pathogenic-ring")                
                 .attr("cx", d => d.x)
                 .attr("cy", d => d.y)
                 .attr("r", primary_node_config.outer_radius)
-                .attr("fill-opacity", "0");
-
-        d3.selectAll("#selection-circle").on("click", function(event, datum){
-            const element = d3.select(this);
-            console.log(datum);
-            console.log(selected_modifications_map.get(datum.id));
-        });
+                .attr("fill", "none")
+                .attr("stroke", d => d.node_is_pathogenic ? color_pathogenic_node : color_normal_node)
+                .attr("stroke-width", d => 2);
 
         // Update secondary nodes
 
@@ -815,8 +981,9 @@ function center_graph_view(){
                 .attr("cx", d => d.x)
                 .attr("cy", d => d.y)
                 .attr("r", secondary_node_config.radius)
-                .attr("fill", secondary_node_config.color)
-                .attr("stroke", secondary_node_config.stroke_color);
+                .attr("stroke", secondary_node_config.color)
+                //.attr("stroke", secondary_node_config.stroke_color);
+                .attr("fill", d => d.node_is_pathogenic ? color_light_pathogenic_node : color_light_normal_node);
             
     });    
 
