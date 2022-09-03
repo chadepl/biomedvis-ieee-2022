@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+    <link rel="stylesheet" href="index.css">
+    <style>
+        
+    </style>
+</head>
+<body>
+
+    <div id="app">
+        <div id="main-area">
+            <div id="toolbar">
+                <div id="toolbar-title"><h1>ProtoFold Neighborhood Inspector (PFNI)</h1></div>   
+                <div id="toolbar-dataset-selector">
+                    <label for="dataset-picker">Dataset: </label>
+                    <select name="dataset-picker" id="dataset-picker"></select>
+                </div>
+            </div>
+
+            <div id="options-panel">
+                
+                <div class="panel-title">
+                    <h2>Visualization parameters</h2>  
+                </div>              
+                
+                <div class="options-block">                    
+                    <h3><u>General settings</u></h3>                
+                    <div id="nn-inspector-toggle">
+                        <label for="nn-inspector-enabled">Mode: </label>
+                        <select name="inspection-mode-select" id="inspection-mode-select">
+                            <option value="residues">Residues</option>
+                            <option value="neighborhoods">Neighborhoods</option>
+                        </select>
+                    </div>
+                </div>
+                
+                <div class="options-block">
+                    <h3><u>Neighborhood inspector</u></h3>
+
+                    <div class="options-block">
+                        <h3>Encodings</h3>
+                        <div>
+                            <label for="select-arcs-colors">Arcs colors: </label>
+                            <select name="select-arcs-colors" id="select-arcs-colors"></select>
+                        </div>
+                        <div>
+                            <label for="select-arcs-height">Arcs height: </label>
+                            <select name="select-arcs-height" id="select-arcs-height"></select>
+                        </div>
+                        <div style="display: none">
+                            <label for="select-ribbon-colors">Ribbons colors: </label>
+                            <select name="select-ribbon-colors" id="select-ribbon-colors"></select>
+                        </div>
+                    </div>                                        
+
+                    <div class="options-block">
+                        <h3>Neighborhood definition</h3>
+                        <div>
+                            <label for="select-neighborhood-type">Neighborhood type: </label>
+                            <select name="select-neighborhood-type" id="select-neighborhood-type">
+                                <option value="knn">kNN</option>
+                                <option value="radius">Radius</option>
+                            </select>
+                        </div>
+                        <div>
+                            <div id="restriction-input-block">
+                                <input type="range" min=0 max=10 step=1 id="restriction-input">
+                                <div id="restriction-input-labels" style="display: inline-block;"></div>                        
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="options-block">
+                        <h3>Selection</h3>
+                        <div>
+                            <button id="button-clear-selection">Clear selection</button>
+                        </div>
+                        <div id="selection-info"></div>
+                    </div>
+
+                </div>          
+
+                <!-- <div class="options-block">
+                    <h3><u>3D structure</u></h3>
+                </div>
+
+                <div class="options-block">
+                    <h3><u>Bulk selector</u></h3>
+                </div> -->
+                                
+            </div>
+
+            <div id="main-panel">
+                <div class="panel-title">
+                    <h2>Residue constellation</h2>
+                </div>
+                <div class="tooltip" id="tooltip-pso"></div>
+                <div class="tooltip" id="tooltip-nfl"></div>
+            </div>
+
+            <div id="side-panel">
+                <div id="side-panel-top">
+                    <div class="panel-title">
+                        <h2>3D structure</h2>
+                    </div>
+                </div>
+                <div id="side-panel-bottom">
+                    <div class="panel-title">
+                        <h2>Bulk selector</h2>
+                    </div>
+                    <div id="side-panel-bottom-vis"></div>
+                </div>
+            </div>
+        </div>    
+    </div>
+
+    <script src="/node_modules/d3/dist/d3.js"></script>
+    <script type="module" src="./index.js"></script>
+</body>
+</html>
