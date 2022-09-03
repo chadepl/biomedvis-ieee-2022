@@ -4,6 +4,9 @@
   "description": "Visualizing protein structure.",
   "main": "index.js",
   "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "repository": {
@@ -19,5 +22,8 @@
   "dependencies": {
     "d3": "^7.6.1",
     "three": "^0.143.0"
+  },
+  "devDependencies": {
+    "vite": "^3.0.7"
   }
 }
